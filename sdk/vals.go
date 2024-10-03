@@ -7,11 +7,11 @@ import (
 )
 
 type Response struct {
-	Data  []DataItem `json:"data"`
-	Links Links      `json:"links"`
+	Data  []ValData `json:"data"`
+	Links ValLinks  `json:"links"`
 }
 
-type DataItem struct {
+type ValData struct {
 	Version   int       `json:"version"`
 	Name      string    `json:"name"`
 	Code      string    `json:"code"`
@@ -21,15 +21,15 @@ type DataItem struct {
 	Privacy   string    `json:"privacy"`
 	Type      string    `json:"type"`
 	URL       string    `json:"url"`
-	Author    Author    `json:"author"`
+	Author    ValAuthor `json:"author"`
 }
 
-type Author struct {
+type ValAuthor struct {
 	ID       string `json:"id"`
 	Username string `json:"username"`
 }
 
-type Links struct {
+type ValLinks struct {
 	Self string `json:"self"`
 	Prev string `json:"prev"`
 	Next string `json:"next"`
@@ -40,20 +40,13 @@ type Vals struct {
 }
 
 func (c *Vals) Search(query string) (*Response, error) {
-	const endpoint = "/v1/search/vals"
+	fullURL := "/v1/search/vals?query=" + url.QueryEscape(query)
 
-	fullURL := endpoint + "?query=" + url.QueryEscape(query)
-
-	req, err := c.Client.newRequest("GET", fullURL)
+	resp, err := c.Client.Request("GET", fullURL, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	resp, err := c.Client.doRequest(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+	logReq(resp)
 
 	data := &Response{}
 	err = json.NewDecoder(resp.Body).Decode(data)
@@ -62,4 +55,8 @@ func (c *Vals) Search(query string) (*Response, error) {
 	}
 
 	return data, nil
+}
+
+func (c *Vals) OfUser(user string) (*Response, error) {
+	return c.Search("/v1/search/vals?query=" + url.QueryEscape("/"+user))
 }

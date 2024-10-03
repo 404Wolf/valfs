@@ -20,6 +20,7 @@
             go
             gopls
             delve
+            cobra-cli
           ];
         };
       };
