@@ -16,6 +16,7 @@
     in {
       devShells = {
         default = pkgs.mkShell {
+          hardeningDisable = ["all"];
           packages = with pkgs; [
             go
             gopls

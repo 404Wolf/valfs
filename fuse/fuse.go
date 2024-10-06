@@ -16,7 +16,7 @@ type bytesFileHandle struct {
 	content []byte
 }
 
-// bytesFileHandle allows reads
+// bytesFileHandle allows readm
 var _ = (fs.FileReader)((*bytesFileHandle)(nil))
 
 func (fh *bytesFileHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
@@ -24,18 +24,32 @@ func (fh *bytesFileHandle) Read(ctx context.Context, dest []byte, off int64) (fu
 	if end > int64(len(fh.content)) {
 		end = int64(len(fh.content))
 	}
+	log.Printf("Reading from %d to %d", off, end)
 
 	return fuse.ReadResultData(fh.content[off:end]), 0
 }
 
-// A Val town Val as a File
-type valInode struct {
-	fs.Inode
+// timeFile implements Open
+var _ = (fs.NodeOpener)((*valFile)(nil))
+
+func (f *valFile) Open(ctx context.Context, openFlags uint32) (fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
+	// disallow writes
+	if fuseFlags&(syscall.O_RDWR|syscall.O_WRONLY) != 0 {
+		return nil, 0, syscall.EROFS
+	}
+
+	// provide the Val's code as the data 
+	fh = &bytesFileHandle{
+		content: []byte(f.ValData.Code),
+	}
+
+	// Return FOPEN_DIRECT_IO so content is not cached.
+	return fh, fuse.FOPEN_DIRECT_IO, 0
 }
 
 type valFile struct {
-	Inode   *valInode
-	ValData *sdk.ValData
+	fs.Inode
+	ValData sdk.ValData
 }
 
 type ValFS struct {
@@ -52,7 +66,6 @@ func NewValFS(valClient *sdk.ValTownClient, valAuthor *sdk.ValAuthor, mountDir s
 	}
 }
 
-// Mount mounts the ValFS
 func (c *ValFS) Mount() error {
 	root := &fs.Inode{}
 	log.Println("Mounted root Inode")
@@ -69,12 +82,16 @@ func (c *ValFS) Mount() error {
 			}
 
 			for _, val := range resp.Data {
-				log.Printf("Iterating through val %s", val.Name)
+				log.Printf("Adding val %s", val.Name)
+				valFile := &valFile{
+					ValData: val,
+				}
+
 				ch := root.NewPersistentInode(
 					ctx,
-					&valInode{},
-					fs.StableAttr{Mode: syscall.S_IFREG})
-				root.AddChild(val.Name, ch, true)
+					valFile,
+					fs.StableAttr{Mode: syscall.S_IFREG}) // regular file
+				root.AddChild(val.Name+".tsx", ch, true)
 				log.Printf("Added child %s", val.Name)
 			}
 		},

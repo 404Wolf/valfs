@@ -25,14 +25,20 @@ func NewClient() (*ValTownClient, error) {
 		HTTPClient: &http.Client{},
 		Bearer:     apiKey,
 	}
-	client.Vals = Vals{Client: client}
+	client.Vals = Vals{}
+	client.Vals.Client = client
 	log.Printf("Created new client: %v", client)
 	return client, nil
 }
 
 func (c *ValTownClient) doRequest(req *http.Request) (*http.Response, error) {
 	log.Printf("Doing request: %v", req)
-	response, err := c.HTTPClient.Do(req)
+	testRequest := http.Request{
+		Method: req.Method,
+		URL:    req.URL,
+	}
+
+	response, err := c.HTTPClient.Do(&testRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +53,6 @@ func logReq(req *http.Response) {
 }
 
 func (c *ValTownClient) newRequest(method, endpoint string, body io.Reader) (*http.Request, error) {
-
 	request, err := http.NewRequest(method, "https://"+BaseURL+endpoint, body)
 
 	request.Header.Set("Content-Type", "application/json")
@@ -63,10 +68,10 @@ func (c *ValTownClient) newRequest(method, endpoint string, body io.Reader) (*ht
 }
 
 func (c *ValTownClient) Request(method, endpoint string, body io.Reader) (*http.Response, error) {
-	request, err := c.newRequest(method, endpoint, body)
-  log.Printf("Request: %v", request)
+	req, err := c.newRequest(method, endpoint, body)
+	log.Printf("Request: %v", req)
 	if err != nil {
 		return nil, err
 	}
-	return c.doRequest(request)
+	return c.doRequest(req)
 }

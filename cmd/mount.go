@@ -12,7 +12,12 @@ var mountCmd = &cobra.Command{
 	Short: "Mount your Val.Town Vals to a directory",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		valFs := fuse.NewValFS(&sdk.ValTownClient{}, &sdk.ValAuthor{Username: "404wolf"}, args[0])
+		client, err := sdk.NewClient()
+		if err != nil {
+			log.Fatal(err)
+		}
+		valFs := fuse.NewValFS(client, &sdk.ValAuthor{Username: "404wolf"}, args[0])
+
 		log.Println("Mounting ValFS file system")
 		valFs.Mount()
 	},
