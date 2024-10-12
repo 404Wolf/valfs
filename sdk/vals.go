@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+type Vals struct {
+	Client *ValTownClient
+}
+
 type Response struct {
 	Data  []ValData `json:"data"`
 	Links ValLinks  `json:"links"`
@@ -29,14 +33,16 @@ type ValAuthor struct {
 	Username string `json:"username"`
 }
 
+func FromUsername(valTownClient ValTownClient, username string) *ValAuthor {
+	return &ValAuthor{
+		Username: username,
+	}
+}
+
 type ValLinks struct {
 	Self string `json:"self"`
 	Prev string `json:"prev"`
 	Next string `json:"next"`
-}
-
-type Vals struct {
-	Client *ValTownClient
 }
 
 func (c *Vals) Search(query string) ([]ValData, error) {
@@ -46,7 +52,7 @@ func (c *Vals) Search(query string) ([]ValData, error) {
 	if err != nil {
 		return nil, err
 	}
-	logReq(resp)
+	logRes(resp)
 
 	data := &Response{}
 	err = json.NewDecoder(resp.Body).Decode(data)
@@ -58,6 +64,21 @@ func (c *Vals) Search(query string) ([]ValData, error) {
 }
 
 func (c *Vals) OfUser(userId string) ([]ValData, error) {
+	resp, err := c.Client.Request("GET", "/v1/users/"+userId+"/vals", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	data := &Response{}
+	err = json.NewDecoder(resp.Body).Decode(data)
+
+	return data.Data, nil
+}
+
+func (c *Vals) OfMine() ([]ValData, error) {
+	profile, err := c.Client.Me.About()
+	userId := profile.ID
+
 	resp, err := c.Client.Request("GET", "/v1/users/"+userId+"/vals", nil)
 	if err != nil {
 		return nil, err

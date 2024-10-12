@@ -10,7 +10,6 @@ func setupValRunner() {
 	tempFile, err := os.CreateTemp("", "run-val")
 	if err != nil {
 		log.Fatal(err)
-		panic(err)
 	}
 
 	defer os.Remove(tempFile.Name())

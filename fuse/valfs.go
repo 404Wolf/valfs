@@ -13,15 +13,13 @@ import (
 // A container for a val file system, with metadata about the file system
 type ValFS struct {
 	ValClient *sdk.ValTownClient
-	ValAuthor *sdk.ValAuthor
 	MountDir  string
 }
 
 // Create a new val file system instance
-func NewValFS(valClient *sdk.ValTownClient, userId string, mountDir string) *ValFS {
+func NewValFS(valTownClient *sdk.ValTownClient, mountDir string) *ValFS {
 	return &ValFS{
-		ValClient: valClient,
-		ValAuthor: &sdk.ValAuthor{ID: userId},
+		ValClient: valTownClient,
 		MountDir:  mountDir,
 	}
 }
@@ -56,10 +54,9 @@ func (c *ValFS) Mount() error {
 
 // Refresh the list of vals in the filesystem
 func (c *ValFS) refreshVals(ctx context.Context, root *fs.Inode) {
-	resp, err := c.ValClient.Vals.OfUser(c.ValAuthor.ID)
+	resp, err := c.ValClient.Vals.OfMine()
 	if err != nil {
 		log.Fatal(err)
-		panic(err)
 	}
 
 	for _, val := range resp {

@@ -7,16 +7,15 @@ import (
 	"log"
 )
 
-var valsCmd = &cobra.Command{
-	Use:   "vals [run]",
-	Short: "Val related actions",
+var valtCmd = &cobra.Command{
+	Use:   "valt",
+	Short: "Val town api related actions",
 	Args:  cobra.ExactArgs(1),
 }
 
 var listValsCommand = &cobra.Command{
 	Use:   "list <userId>",
 	Short: "List vals for a given user uuid",
-	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		userId := args[0]
 
@@ -33,7 +32,25 @@ var listValsCommand = &cobra.Command{
 	},
 }
 
+var aboutMe = &cobra.Command{
+	Use:   "me",
+	Short: "Get information about authed user",
+	Run: func(cmd *cobra.Command, args []string) {
+		client, err := sdk.NewClient()
+		if err != nil {
+			log.Fatal(err)
+		}
+		meInfo, err := client.Me.About()
+		if err != nil {
+			log.Fatal(err)
+		}
+		prettyOutput := PrettyPrint(meInfo)
+		fmt.Printf("%v", prettyOutput)
+	},
+}
+
 func ValsInit() {
-	rootCmd.AddCommand(valsCmd)
-	valsCmd.AddCommand(listValsCommand)
+	rootCmd.AddCommand(valtCmd)
+	valtCmd.AddCommand(listValsCommand)
+	valtCmd.AddCommand(aboutMe)
 }

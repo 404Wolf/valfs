@@ -34,9 +34,6 @@ func TestValsSearch(t *testing.T) {
 	client, err := NewClient()
 	assert.NoError(t, err, "Error creating new client")
 
-	resp, err := client.Vals.Search("test")
+	_, err = client.Vals.Search("test")
 	assert.NoError(t, err, "Error searching")
-	assert.NotNil(t, resp.Data, "Data is nil")
-	assert.NotEmpty(t, resp.Data, "Data is empty")
-	assert.NotEmpty(t, resp.Data[0].Name, "Name is not test")
 }

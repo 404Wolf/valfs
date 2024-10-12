@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 )
 
 const BaseURL = "api.val.town"
@@ -14,6 +15,7 @@ type ValTownClient struct {
 	Bearer     string
 	HTTPClient *http.Client
 	Vals       Vals
+	Me         Me
 }
 
 func NewClient() (*ValTownClient, error) {
@@ -27,50 +29,56 @@ func NewClient() (*ValTownClient, error) {
 	}
 	client.Vals = Vals{}
 	client.Vals.Client = client
+	client.Me = Me{}
+	client.Me.Client = client
+
 	log.Printf("Created new client: %v", client)
 	return client, nil
 }
 
 func (c *ValTownClient) doRequest(req *http.Request) (*http.Response, error) {
-	log.Printf("Doing request: %v", req)
-	testRequest := http.Request{
-		Method: req.Method,
-		URL:    req.URL,
-	}
-
-	response, err := c.HTTPClient.Do(&testRequest)
+	res, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 
-	logReq(response)
-	return response, nil
+	logRes(res)
+	return res, nil
 }
 
-func logReq(req *http.Response) {
-	req_without_auth := req
-	req_without_auth.Header.Del("Authorization")
-	log.Println(req_without_auth)
+func logReq(req *http.Request) {
+	log.Printf("%v", req.Header.Get("Authorization"))
+}
+
+func logRes(req *http.Response) {
+	log.Printf("%v", req)
 }
 
 func (c *ValTownClient) newRequest(method, endpoint string, body io.Reader) (*http.Request, error) {
-	request, err := http.NewRequest(method, "https://"+BaseURL+endpoint, body)
+	req, err := http.NewRequest(method, "https://"+BaseURL+endpoint, body)
 
-	request.Header.Set("Content-Type", "application/json")
-	log.Printf("Created new request: %v", request)
-	request.Header.Set("Authorization", "Bearer "+c.Bearer)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.Bearer)
+	logReq(req)
 
 	if err != nil {
 		log.Fatalf("Error creating request: %v", err)
 		return nil, err
 	}
-	log.Printf("foo")
 
-	return request, nil
+	return req, nil
 }
 
+// Make a request to the val town API at a specific endpoint with a specific method.
+// Include the leading / (e.g. /v1/users) for the endpoint. For POST/PUTs you can include a body.
 func (c *ValTownClient) Request(method, endpoint string, body io.Reader) (*http.Response, error) {
+	method = strings.ToUpper(method)
+	if (method != "POST" && method != "PUT") && body != nil {
+		return nil, errors.New("Body is only allowed for POST and PUT requests")
+	}
+
 	req, err := c.newRequest(method, endpoint, body)
+	logReq(req)
 	log.Printf("Request: %v", req)
 	if err != nil {
 		return nil, err

@@ -12,18 +12,17 @@ var fuseCmd = &cobra.Command{
 }
 
 var mountCmd = &cobra.Command{
-	Use:   "mount <directory> <userId>",
+	Use:   "mount <directory>",
 	Short: "Mount your Vals to a directory",
-	Args:  cobra.ExactArgs(2),
+	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		directory := args[0]
-		userId := args[1]
 
 		client, err := sdk.NewClient()
 		if err != nil {
 			log.Fatal(err)
 		}
-		valFs := fuse.NewValFS(client, userId, directory)
+		valFs := fuse.NewValFS(client, directory)
 
 		log.Println("Mounting ValFS file system")
 		valFs.Mount()

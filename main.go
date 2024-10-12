@@ -16,7 +16,6 @@ func loadEnvFile() error {
 	value := os.Getenv("VALTOWN_API_KEY")
 	if value == "" {
 		fmt.Println("VALTOWN_API_KEY is not set")
-		panic("VALTOWN_API_KEY is not set")
 	}
 	return err
 }
@@ -27,7 +26,6 @@ func setup() {
 	tempFile, err := os.CreateTemp("", "run-val")
 	if err != nil {
 		log.Fatal(err)
-		panic(err)
 	}
 
 	defer os.Remove(tempFile.Name())
