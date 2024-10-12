@@ -21,7 +21,27 @@ func loadEnvFile() error {
 	return err
 }
 
-func main() {
+func setup() {
 	loadEnvFile()
-	cmd.Execute()
+
+	tempFile, err := os.CreateTemp("", "run-val")
+	if err != nil {
+		log.Fatal(err)
+		panic(err)
+	}
+
+	defer os.Remove(tempFile.Name())
+	defer tempFile.Close()
+}
+
+func execute() {
+	err := cmd.Execute()
+	if err != nil {
+		os.Exit(1)
+	}
+}
+
+func main() {
+	setup()
+	execute()
 }

@@ -39,7 +39,7 @@ type Vals struct {
 	Client *ValTownClient
 }
 
-func (c *Vals) Search(query string) (*Response, error) {
+func (c *Vals) Search(query string) ([]ValData, error) {
 	fullURL := "/v1/search/vals?query=" + url.QueryEscape(query)
 
 	resp, err := c.Client.Request("GET", fullURL, nil)
@@ -54,9 +54,17 @@ func (c *Vals) Search(query string) (*Response, error) {
 		return nil, err
 	}
 
-	return data, nil
+	return data.Data, nil
 }
 
-func (c *Vals) OfUser(user string) (*Response, error) {
-	return c.Search("/v1/search/vals?query=" + url.QueryEscape("/"+user))
+func (c *Vals) OfUser(userId string) ([]ValData, error) {
+	resp, err := c.Client.Request("GET", "/v1/users/"+userId+"/vals", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	data := &Response{}
+	err = json.NewDecoder(resp.Body).Decode(data)
+
+	return data.Data, nil
 }

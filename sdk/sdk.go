@@ -42,6 +42,7 @@ func (c *ValTownClient) doRequest(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	logReq(response)
 	return response, nil
 }
@@ -64,6 +65,7 @@ func (c *ValTownClient) newRequest(method, endpoint string, body io.Reader) (*ht
 		return nil, err
 	}
 	log.Printf("foo")
+
 	return request, nil
 }
 

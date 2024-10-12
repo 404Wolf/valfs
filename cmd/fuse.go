@@ -7,22 +7,31 @@ import (
 	"log"
 )
 
+var fuseCmd = &cobra.Command{
+	Short: "Fuse related actions",
+}
+
 var mountCmd = &cobra.Command{
-	Use:   "mount [directory]",
-	Short: "Mount your Val.Town Vals to a directory",
-	Args:  cobra.ExactArgs(1),
+	Use:   "mount <directory> <userId>",
+	Short: "Mount your Vals to a directory",
+	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
+		directory := args[0]
+		userId := args[1]
+
 		client, err := sdk.NewClient()
 		if err != nil {
 			log.Fatal(err)
 		}
-		valFs := fuse.NewValFS(client, &sdk.ValAuthor{Username: "404wolf"}, args[0])
+		valFs := fuse.NewValFS(client, userId, directory)
 
 		log.Println("Mounting ValFS file system")
 		valFs.Mount()
 	},
 }
 
-func init() {
+func FuseInit() {
+	fuseCmd.AddCommand(mountCmd)
 	rootCmd.AddCommand(mountCmd)
+	rootCmd.AddCommand(fuseCmd)
 }
