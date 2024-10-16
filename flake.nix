@@ -25,5 +25,9 @@
           ];
         };
       };
+      packages = rec {
+        default = valfs;
+        valfs = pkgs.callPackage ./package.nix {};
+      };
     });
 }

@@ -70,8 +70,6 @@ func main() {
 		return
 	} else {
 		// Otherwise, proceed as normal with cobra
-		cmd.Execute()
+		execute()
 	}
-
-	execute()
 }

@@ -35,8 +35,8 @@ func handleShebangCall(args []string) {
 
 func InitRoot() {
 	cobra.OnInitialize(initLogger)
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 
 	FuseInit()
 	ValsInit()
