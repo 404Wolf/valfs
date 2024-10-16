@@ -2,6 +2,7 @@ package fuse
 
 import (
 	"context"
+	"fmt"
 	"github.com/404wolf/valfs/sdk"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -17,7 +18,8 @@ type bytesFileHandle struct {
 // A file that contains the code of a val
 type valFile struct {
 	fs.Inode
-	ValData sdk.ValData
+	ValData   sdk.ValData
+	ValClient *sdk.ValTownClient
 }
 
 // Provide the content of the val as the content of the file
@@ -41,6 +43,12 @@ func (f *valFile) Open(ctx context.Context, openFlags uint32) (fh fs.FileHandle,
 
 	// Return FOPEN_DIRECT_IO so content is not cached.
 	return fh, fuse.FOPEN_DIRECT_IO, 0
+}
+
+// Handle deletion of a file. For now, do nothing.
+func (f *valFile) Unlink(ctx context.Context, name string) syscall.Errno {
+	fmt.Println("Unlinking", name)
+	return 0
 }
 
 // Handler for getting metadata for a file; says it is read/write/executable

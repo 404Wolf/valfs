@@ -3,6 +3,7 @@ module github.com/404wolf/valfs
 go 1.22
 
 require (
+	github.com/deckarep/golang-set/v2 v2.6.0
 	github.com/hanwen/go-fuse/v2 v2.6.1
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.8.1

@@ -18,7 +18,7 @@ type ValTownClient struct {
 	Me         Me
 }
 
-func NewClient() (*ValTownClient, error) {
+func NewValTownClient() (*ValTownClient, error) {
 	apiKey := os.Getenv("VALTOWN_API_KEY")
 	if apiKey == "" {
 		return nil, errors.New("VALTOWN_API_KEY is not set")

@@ -8,6 +8,10 @@ import (
 	"testing"
 )
 
+func getTestClient() (*ValTownClient, error) {
+	return NewValTownClient()
+}
+
 func TestMain(t *testing.M) {
 	err := godotenv.Load("../.env")
 	if err != nil {
@@ -18,7 +22,7 @@ func TestMain(t *testing.M) {
 }
 
 func TestNewVal(t *testing.T) {
-	client, err := NewClient()
+	client, err := getTestClient()
 	if err != nil {
 		t.Errorf("Error creating new client: %v", err)
 	}
@@ -31,9 +35,18 @@ func TestNewVal(t *testing.T) {
 }
 
 func TestValsSearch(t *testing.T) {
-	client, err := NewClient()
+	client, err := getTestClient()
 	assert.NoError(t, err, "Error creating new client")
 
 	_, err = client.Vals.Search("test")
 	assert.NoError(t, err, "Error searching")
+}
+
+func TestMyVals(t *testing.T) {
+	client, err := getTestClient()
+	assert.NoError(t, err, "Error creating new client")
+
+	result, err := client.Vals.OfMine()
+	assert.NoError(t, err, "Error fetching my vals")
+	assert.Greater(t, len(result), 0, "No vals found")
 }

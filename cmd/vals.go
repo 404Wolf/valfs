@@ -19,7 +19,7 @@ var listValsCommand = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		userId := args[0]
 
-		client, err := sdk.NewClient()
+		client, err := sdk.NewValTownClient()
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -32,11 +32,24 @@ var listValsCommand = &cobra.Command{
 	},
 }
 
-var aboutMe = &cobra.Command{
+var runValCommand = &cobra.Command{
+	Use:   "run",
+	Short: "Run a val",
+	Run: func(cmd *cobra.Command, args []string) {
+		client, err := sdk.NewValTownClient()
+		if err != nil {
+			log.Fatal(err)
+		}
+		logs, err := client.Vals.Run(args[0])
+		fmt.Println(logs)
+	},
+}
+
+var aboutMeCommand = &cobra.Command{
 	Use:   "me",
 	Short: "Get information about authed user",
 	Run: func(cmd *cobra.Command, args []string) {
-		client, err := sdk.NewClient()
+		client, err := sdk.NewValTownClient()
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -52,5 +65,5 @@ var aboutMe = &cobra.Command{
 func ValsInit() {
 	rootCmd.AddCommand(valtCmd)
 	valtCmd.AddCommand(listValsCommand)
-	valtCmd.AddCommand(aboutMe)
+	valtCmd.AddCommand(aboutMeCommand)
 }

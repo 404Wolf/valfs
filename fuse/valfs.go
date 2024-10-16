@@ -3,6 +3,7 @@ package fuse
 import (
 	"context"
 	"github.com/404wolf/valfs/sdk"
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"log"
@@ -52,24 +53,72 @@ func (c *ValFS) Mount() error {
 	return nil
 }
 
+func (c *ValFS) addValFile(ctx context.Context, root *fs.Inode, val sdk.ValData) {
+	valFile := &valFile{
+		ValData:   val,
+		ValClient: c.ValClient,
+	}
+
+	ch := root.NewPersistentInode(
+		ctx,
+		valFile,
+		fs.StableAttr{Mode: syscall.S_IFREG}) // regular file
+	root.AddChild(val.Name+".tsx", ch, true)
+}
+
+func (c *ValFS) removeValFile(_ context.Context, root *fs.Inode, val sdk.ValData) {
+	root.RmChild(val.Name + ".tsx")
+}
+
+var previousVals = mapset.NewSet[string]()
+
 // Refresh the list of vals in the filesystem
 func (c *ValFS) refreshVals(ctx context.Context, root *fs.Inode) {
+	// Fetch all vals
 	resp, err := c.ValClient.Vals.OfMine()
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	// Add all vals to a set for easy comparison
+	vals := mapset.NewSet[*sdk.ValData]()
 	for _, val := range resp {
-		log.Printf("Adding val %s", val.Name)
-		valFile := &valFile{
-			ValData: val,
-		}
-
-		ch := root.NewPersistentInode(
-			ctx,
-			valFile,
-			fs.StableAttr{Mode: syscall.S_IFREG}) // regular file
-		root.AddChild(val.Name+".tsx", ch, true)
-		log.Printf("Added child %s", val.Name)
+		vals.Add(&val)
 	}
+
+	// Set of the IDs of the current vals
+	myValsSet := mapset.NewSet[string]()
+	for _, val := range resp {
+		myValsSet.Add(val.ID)
+	}
+
+	// If the set of vals hasn't changed, don't do anything
+	if myValsSet.Equal(previousVals) {
+		return
+	}
+
+	// Remove vals that are no longer in the set
+	previousValsClone := previousVals.Clone()
+	previousValsClone.Difference(myValsSet)
+	for valID := range previousValsClone.Iter() {
+		val, err := c.ValClient.Vals.Fetch(valID)
+		if err != nil {
+			log.Fatal(err)
+		}
+		c.removeValFile(ctx, root, *val)
+	}
+
+	// Add vals that are in the set but not in the previous set
+	myValsSetClone := myValsSet.Clone()
+	myValsSetClone.Difference(previousVals)
+	for valID := range myValsSetClone.Iter() {
+		val, err := c.ValClient.Vals.Fetch(valID)
+		if err != nil {
+			log.Fatal(err)
+		}
+		c.addValFile(ctx, root, *val)
+	}
+
+	// Update the previousVals set
+	previousVals = myValsSet
 }

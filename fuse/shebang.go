@@ -5,18 +5,15 @@ import (
 	"os"
 )
 
-// Setup a path to an executable for running vals
-func setupValRunner() {
-	tempFile, err := os.CreateTemp("", "run-val")
+func getCurrentExecutablePath() string {
+	execPath, err := os.Executable()
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	defer os.Remove(tempFile.Name())
-	defer tempFile.Close()
+	return execPath
 }
 
 // Prepend a shebang that defines how to execute it
 func executeValShebang(code string) string {
-	return "#/" + code
+	return "#!" + getCurrentExecutablePath() + "\n\n" + code
 }

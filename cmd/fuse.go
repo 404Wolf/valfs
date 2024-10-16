@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"fmt"
+	"log"
+
 	"github.com/404wolf/valfs/fuse"
 	"github.com/404wolf/valfs/sdk"
 	"github.com/spf13/cobra"
-	"log"
 )
 
 var fuseCmd = &cobra.Command{
@@ -18,13 +20,13 @@ var mountCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		directory := args[0]
 
-		client, err := sdk.NewClient()
+		client, err := sdk.NewValTownClient()
 		if err != nil {
 			log.Fatal(err)
 		}
 		valFs := fuse.NewValFS(client, directory)
 
-		log.Println("Mounting ValFS file system")
+		fmt.Println("Mounting ValFS file system at", directory)
 		valFs.Mount()
 	},
 }
