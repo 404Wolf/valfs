@@ -22,6 +22,7 @@
             gopls
             delve
             cobra-cli
+            openapi-generator-cli
           ];
         };
       };

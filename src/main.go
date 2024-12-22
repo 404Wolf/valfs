@@ -3,12 +3,9 @@ package main
 import (
 	"fmt"
 	"github.com/404wolf/valfs/cmd"
-	"github.com/404wolf/valfs/sdk"
 	"github.com/joho/godotenv"
-	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -47,29 +44,13 @@ func isShebangCall() bool {
 	return len(os.Args) > 1 && strings.HasSuffix(os.Args[1], ".tsx")
 }
 
-func handleShebangCall(args []string) {
-	log.SetOutput(io.Discard)
-
-	scriptPath := args[0]
-	basePath := filepath.Base(scriptPath)
-	fmt.Printf("Running %s...\n", basePath)
-
-	client, err := sdk.NewValTownClient()
-	if err != nil {
-		log.Fatal(err)
-	}
-	client.Vals.Run(scriptPath)
-}
-
 func main() {
 	setup()
 
-	// If it is a shebang call, manually trigger the correct command
 	if isShebangCall() {
-		handleShebangCall(os.Args[1:])
+		fmt.Println("Shebang call detected. Not supported yet.")
 		return
 	} else {
-		// Otherwise, proceed as normal with cobra
 		execute()
 	}
 }

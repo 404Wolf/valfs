@@ -3,7 +3,7 @@ package fuse
 import (
 	"context"
 	"fmt"
-	"github.com/404wolf/valfs/sdk"
+	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"log"
@@ -18,8 +18,8 @@ type bytesFileHandle struct {
 // A file that contains the code of a val
 type valFile struct {
 	fs.Inode
-	ValData   sdk.ValData
-	ValClient *sdk.ValTownClient
+	ValData   valgo.BasicVal
+	ValClient *valgo.APIClient
 }
 
 // Provide the content of the val as the content of the file
@@ -36,7 +36,7 @@ func (fh *bytesFileHandle) Read(ctx context.Context, dest []byte, off int64) (fu
 // Handle requests for a file descriptor. Tell the user that it is an executable read/write file.
 func (f *valFile) Open(ctx context.Context, openFlags uint32) (fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
 	// Provide the Val's code as the data
-	contents := executeValShebang(f.ValData.Code)
+	contents := executeValShebang(f.ValData.GetCode())
 	fh = &bytesFileHandle{
 		content: []byte(contents),
 	}
@@ -53,6 +53,6 @@ func (f *valFile) Unlink(ctx context.Context, name string) syscall.Errno {
 
 // Handler for getting metadata for a file; says it is read/write/executable
 func (f *valFile) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
-	out.Mode = 0755
+	out.Mode = 0755 // Read/write/executable
 	return 0
 }

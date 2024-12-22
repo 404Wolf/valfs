@@ -1,7 +1,10 @@
+ALL_GO_FILES := $(shell find . -type f -name '*.go')
+
 all: valfs
 
-valfs: 
-	go build -o valfs main.go
+valfs: $(ALL_GO_FILES)
+	cd src && go build -o valfs main.go
+	mv src/valfs .
 
 run: valfs
 	./valfs

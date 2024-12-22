@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"log"
+	"os"
 
 	"github.com/404wolf/valfs/fuse"
-	"github.com/404wolf/valfs/sdk"
+	"github.com/404wolf/valgo"
 	"github.com/spf13/cobra"
 )
 
@@ -20,10 +20,12 @@ var mountCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		directory := args[0]
 
-		client, err := sdk.NewValTownClient()
-		if err != nil {
-			log.Fatal(err)
-		}
+		configuration := valgo.NewConfiguration()
+		configuration.AddDefaultHeader(
+			"Authorization",
+			"Bearer "+os.Getenv("VALTOWN_API_KEY"),
+		)
+		client := valgo.NewAPIClient(configuration)
 		valFs := fuse.NewValFS(client, directory)
 
 		fmt.Println("Mounting ValFS file system at", directory)
