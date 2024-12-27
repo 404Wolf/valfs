@@ -8,8 +8,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// Combines a BasicVal and content into a single string with YAML frontmatter
-func PackVal(val valgo.BasicVal, content string) (string, error) {
+// Combines a ExtendedVal and content into a single string with YAML frontmatter
+func PackVal(val valgo.ExtendedVal, content string) (string, error) {
 	frontmatterVal := struct {
 		Name    string `yaml:"name"`
 		Id      string `yaml:"id"`
@@ -36,9 +36,9 @@ func PackVal(val valgo.BasicVal, content string) (string, error) {
 	return combined, nil
 }
 
-// Separates a combined string into BasicVal and content
-func UnpackVal(combined string) (valgo.BasicVal, string, error) {
-	var val valgo.BasicVal
+// Separates a combined string into ExtendedVal and content
+func UnpackVal(combined string) (valgo.ExtendedVal, string, error) {
+	var val valgo.ExtendedVal
 	var content string
 
 	start := strings.Index(combined, "/*---")
