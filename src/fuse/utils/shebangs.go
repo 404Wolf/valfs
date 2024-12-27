@@ -5,6 +5,7 @@ import (
 	"os"
 )
 
+// Get the path to the current program's binary file
 func getCurrentExecutablePath() string {
 	execPath, err := os.Executable()
 	if err != nil {
@@ -14,6 +15,6 @@ func getCurrentExecutablePath() string {
 }
 
 // Prepend a shebang that defines how to execute it
-func executeValShebang(code string) string {
+func AffixShebang(code string) string {
 	return "#!" + getCurrentExecutablePath() + "\n\n" + code
 }

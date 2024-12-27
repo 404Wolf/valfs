@@ -2,9 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"os"
 
-	"github.com/404wolf/valfs/fuse"
+	valfs "github.com/404wolf/valfs/fuse/valfs"
 	"github.com/404wolf/valgo"
 	"github.com/spf13/cobra"
 )
@@ -26,10 +27,17 @@ var mountCmd = &cobra.Command{
 			"Bearer "+os.Getenv("VALTOWN_API_KEY"),
 		)
 		client := valgo.NewAPIClient(configuration)
-		valFs := fuse.NewValFS(client, directory)
+
+		// Create a root node
+		root := &valfs.ValFS{
+			ValClient: client,
+			MountDir:  directory,
+		}
 
 		fmt.Println("Mounting ValFS file system at", directory)
-		valFs.Mount()
+		if err := root.Mount(); err != nil {
+			log.Fatalf("Mount failed: %v", err)
+		}
 	},
 }
 

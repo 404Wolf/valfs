@@ -8,6 +8,7 @@ require (
 	github.com/hanwen/go-fuse/v2 v2.7.2
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.8.1
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
