@@ -11,14 +11,7 @@ import (
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
 
-// Get the code of a val padded and ready for placement in a file
-func getContents(val *valgo.ExtendedVal) string {
-	return AffixShebang(val.GetCode())
-}
-
 const ValFileMode = syscall.S_IFREG | 0o777
-
-var _ = (fs.FileReader)((*BytesFileHandle)(nil))
 
 // A file in the val file system, with metadata about the file and an inode
 type ValFile struct {
@@ -30,6 +23,46 @@ type ValFile struct {
 // A file handle that carries separate content for each open call
 type BytesFileHandle struct {
 	content []byte
+}
+
+var _ = (fs.NodeOpener)((*ValFile)(nil))
+
+// Get a file descriptor for a val file
+func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
+	fh fs.FileHandle,
+	fuseFlags uint32,
+	errno syscall.Errno,
+) {
+	// Provide the Val's code as the data
+	valPackage := ValPackage{Val: &f.ValData}
+	packed, err := valPackage.GetContents()
+	if err != nil {
+		return nil, 0, syscall.EIO
+	}
+
+	fh = &BytesFileHandle{
+		content: []byte(packed),
+	}
+
+	// Return FOPEN_DIRECT_IO so content is not cached
+	return fh, fuse.FOPEN_DIRECT_IO, 0
+}
+
+var _ = (fs.FileReader)((*BytesFileHandle)(nil))
+
+// Provide the content of the val as the content of the file
+func (fh *BytesFileHandle) Read(
+	ctx context.Context,
+	dest []byte,
+	off int64,
+) (fuse.ReadResult, syscall.Errno) {
+	end := off + int64(len(dest))
+	if end > int64(len(fh.content)) {
+		end = int64(len(fh.content))
+	}
+	log.Printf("Reading from %d to %d", off, end)
+
+	return fuse.ReadResultData(fh.content[off:end]), 0
 }
 
 var _ = (fs.NodeWriter)((*ValFile)(nil))
@@ -63,42 +96,6 @@ func (c *ValFile) Write(
 	return uint32(len(data)), 0
 }
 
-var _ = (fs.NodeOpener)((*ValFile)(nil))
-
-// Provide the content of the val as the content of the file
-func (fh *BytesFileHandle) Read(
-	ctx context.Context,
-	dest []byte,
-	off int64,
-) (fuse.ReadResult, syscall.Errno) {
-	end := off + int64(len(dest))
-	if end > int64(len(fh.content)) {
-		end = int64(len(fh.content))
-	}
-	log.Printf("Reading from %d to %d", off, end)
-
-	return fuse.ReadResultData(fh.content[off:end]), 0
-}
-
-const DefaultValContents = `console.log("Hello world!")`
-const DefaultValType = Script
-
-// Get a file descriptor for a val file
-func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
-	fh fs.FileHandle,
-	fuseFlags uint32,
-	errno syscall.Errno,
-) {
-	// Provide the Val's code as the data
-	contents := getContents(&f.ValData)
-	fh = &BytesFileHandle{
-		content: []byte(contents),
-	}
-
-	// Return FOPEN_DIRECT_IO so content is not cached
-	return fh, fuse.FOPEN_DIRECT_IO, 0
-}
-
 var _ = (fs.NodeGetattrer)((*ValFile)(nil))
 
 // Make sure the file is always read/write/executable even if changed
@@ -109,8 +106,14 @@ func (f *ValFile) Getattr(
 ) syscall.Errno {
 	// Set the mode to indicate a regular file with read, write, and execute
 	// permissions for all
+	valPackage := ValPackage{Val: &f.ValData}
+	contentLen, err := valPackage.GetContentsLength()
+	if err != nil {
+		return syscall.EIO
+	}
+
 	out.Mode = syscall.S_IFDIR | ValFileMode
-	out.Size = uint64(len(getContents(&f.ValData)))
+	out.Size = uint64(contentLen)
 
 	// Set timestamps to be modified now
 	now := time.Now()
