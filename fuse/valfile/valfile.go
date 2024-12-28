@@ -3,6 +3,7 @@ package fuse
 import (
 	"context"
 	"log"
+	"net/http"
 	"syscall"
 	"time"
 
@@ -35,7 +36,7 @@ func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 ) {
 	// Provide the Val's code as the data
 	valPackage := ValPackage{Val: &f.ValData}
-	packed, err := valPackage.GetContents()
+	packed, err := valPackage.ToText()
 	if err != nil {
 		return nil, 0, syscall.EIO
 	}
@@ -74,21 +75,52 @@ func (c *ValFile) Write(
 	data []byte,
 	off int64,
 ) (written uint32, errno syscall.Errno) {
-	oldData := (fh.(*BytesFileHandle)).content
-	newData := append(oldData[:off], data...)
+	// Make sure the file handle is valid
+	handle, ok := fh.(*BytesFileHandle)
+	if !ok {
+		return 0, syscall.EBADF
+	}
 
+	// Make sure not writing out of bounds
+	oldData := handle.content
+	if int(off) > len(oldData) {
+		return 0, syscall.EINVAL
+	}
+
+	// Extract the new data
+	newData := make([]byte, len(oldData))
+	copy(newData, oldData)
+	copy(newData[off:], data)
+	if int(off)+len(data) < len(oldData) {
+		copy(newData[off+int64(len(data)):], oldData[off+int64(len(data)):])
+	}
+
+	// Put the new data into the val
+	newValPackage := NewValPackage(&c.ValData)
+	newValPackage.UpdateVal(string(newData))
+
+	// Create new packed file contents
+	newPackedCode, err := newValPackage.ToText()
+	if err != nil {
+		return 0, syscall.EIO
+	}
+
+	// Update the file handle stored code
+	handle.content = []byte(newPackedCode)
+
+	// Update the code of the actual val
 	valData := &c.ValData
-	valData.SetCode(string(newData))
+	valData.SetCode(newPackedCode)
 
 	valCreateReqData := valgo.NewValsCreateRequest(valData.GetCode())
-	valCreateReqData.SetName(valData.GetName())
-	valCreateReqData.SetType(valData.GetType())
+	// The things the user can change in the yaml metadata
+	valCreateReqData.SetPrivacy(valData.GetType())
 
 	valCreateReq := c.ValClient.ValsAPI.ValsCreateVersion(ctx, valData.GetId())
 	valCreateReq.ValsCreateRequest(*valCreateReqData)
 
 	extVal, resp, err := valCreateReq.Execute()
-	if err != nil || resp.StatusCode != 200 {
+	if err != nil || resp.StatusCode != http.StatusOK {
 		return 0, syscall.EIO
 	}
 	c.ValData = *extVal
@@ -107,13 +139,13 @@ func (f *ValFile) Getattr(
 	// Set the mode to indicate a regular file with read, write, and execute
 	// permissions for all
 	valPackage := ValPackage{Val: &f.ValData}
-	contentLen, err := valPackage.GetContentsLength()
+	contentLen, err := valPackage.Len()
 	if err != nil {
 		return syscall.EIO
 	}
 
-	out.Mode = syscall.S_IFDIR | ValFileMode
 	out.Size = uint64(contentLen)
+	out.Mode = ValFileMode
 
 	// Set timestamps to be modified now
 	now := time.Now()
