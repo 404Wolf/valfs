@@ -2,6 +2,8 @@ package fuse
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"regexp"
 
 	"github.com/404wolf/valgo"
@@ -14,10 +16,9 @@ type ValPackage struct {
 }
 
 type ValFrontmatterLinks struct {
-	Self     string  `yaml:"valtown"lc:"🔒"`
-	Versions string  `yaml:"history" lc:"🔒"`
+	Website  string  `yaml:"valtown" lc:"🔒"`
 	Module   string  `yaml:"esmModule" lc:"🔒"`
-	Endpoint *string `yaml:"deployment" lc:"🔒 (only for HTTP vals)"`
+	Endpoint *string `yaml:"deployment,omitempty" lc:"🔒"`
 }
 
 type ValFrontmatter struct {
@@ -25,27 +26,36 @@ type ValFrontmatter struct {
 	Version int32               `yaml:"version" lc:"🔒"`
 	Privacy string              `yaml:"privacy" lc:"(public|private|unlisted)"`
 	Links   ValFrontmatterLinks `yaml:"links"`
+	Readme  string              `yaml:"readme"`
 }
 
 // Break apart a val into its metadata that the user can edit, and the raw code
 // contents
-func deconstruct(contents string) (*ValFrontmatter, error) {
+func deconstruct(contents string) (
+	code *string,
+	meta *ValFrontmatter,
+	err error,
+) {
 	// Extract the frontmatter
-	re := regexp.MustCompile(`(?s)/*---\n(.*?)\n---*/`)
-	matches := re.FindStringSubmatch(contents)
-	if len(matches) == 0 {
-		return nil, errors.New("No frontmatter found")
+	frontmatterRe := regexp.MustCompile(`(?s)/?---\n(.*?)\n---/?`)
+	frontmatterMatches := frontmatterRe.FindStringSubmatch(contents)
+	if len(frontmatterMatches) == 0 {
+		return nil, nil, errors.New("No frontmatter found")
 	}
-	match := matches[0]
+	frontmatterMatch := frontmatterMatches[0]
+
+	// Extract the code
+	frontmatterEndIndex := frontmatterRe.FindStringIndex(contents)[1]
+	codeSection := contents[frontmatterEndIndex+4:]
 
 	// Deserialize the frontmatter
-	frontmatter := ValFrontmatter{}
-	err := yaml.Unmarshal([]byte(match), &frontmatter)
+	meta = &ValFrontmatter{}
+	err = yaml.Unmarshal([]byte(frontmatterMatch), meta)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &frontmatter, nil
+	return &codeSection, meta, nil
 }
 
 // Create a new val package from a val
@@ -59,8 +69,7 @@ func (v *ValPackage) ToText() (string, error) {
 	link := v.Val.GetLinks()
 
 	frontmatterValLinks := ValFrontmatterLinks{
-		Self:     link.Self,
-		Versions: link.Versions,
+		Website:  v.Val.Url,
 		Module:   link.Module,
 		Endpoint: link.Endpoint,
 	}
@@ -69,6 +78,7 @@ func (v *ValPackage) ToText() (string, error) {
 		Version: v.Val.Version,
 		Privacy: v.Val.Privacy,
 		Links:   frontmatterValLinks,
+		Readme:  v.Val.GetReadme(),
 	}
 
 	frontmatterYAML, err := yamlcomment.Marshal(frontmatterVal)
@@ -94,13 +104,17 @@ func (v *ValPackage) Len() (int, error) {
 // Set the contents of a val package. Updates underlying val by deconstructing
 // the contents into frontmatter and code.
 func (v *ValPackage) UpdateVal(contents string) error {
-	frontmatter, err := deconstruct(contents)
+	fmt.Println("contents", contents)
+	code, frontmatter, err := deconstruct(contents)
 	if err != nil {
+		log.Println("err", err)
 		return err
 	}
 
 	// Update the underlying val
 	v.Val.Privacy = frontmatter.Privacy
+	v.Val.SetReadme(frontmatter.Readme)
+	v.Val.SetCode(*code)
 
 	// Success
 	return nil

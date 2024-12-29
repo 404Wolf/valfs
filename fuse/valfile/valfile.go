@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"syscall"
-	"time"
 
 	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -88,16 +87,23 @@ func (c *ValFile) Write(
 	}
 
 	// Extract the new data
-	newData := make([]byte, len(oldData))
-	copy(newData, oldData)
-	copy(newData[off:], data)
-	if int(off)+len(data) < len(oldData) {
-		copy(newData[off+int64(len(data)):], oldData[off+int64(len(data)):])
+	newDataLen := int64(len(data))
+	nowIsLarger := (off + newDataLen) > int64(len(oldData))
+
+	// If they are growing the file
+	if nowIsLarger {
+		newDataLen = off + int64(len(data))
 	}
+
+	// Create a buffer and copy over data
+	newData := make([]byte, newDataLen)
+	copy(newData, oldData)        // copy old data to the new data buffer
+	copy(newData[off:], data)     // copy new data to the proper location of new data
+	newDataStr := string(newData) // convert it to a string
 
 	// Put the new data into the val
 	newValPackage := NewValPackage(&c.ValData)
-	newValPackage.UpdateVal(string(newData))
+	newValPackage.UpdateVal(newDataStr)
 
 	// Create new packed file contents
 	newPackedCode, err := newValPackage.ToText()
@@ -109,23 +115,25 @@ func (c *ValFile) Write(
 	handle.content = []byte(newPackedCode)
 
 	// Update the code of the actual val
-	valData := &c.ValData
-	valData.SetCode(newPackedCode)
+	valCreateReqData := valgo.NewValsCreateRequest(c.ValData.GetCode())
 
-	valCreateReqData := valgo.NewValsCreateRequest(valData.GetCode())
 	// The things the user can change in the yaml metadata
-	valCreateReqData.SetPrivacy(valData.GetType())
+	valCreateReqData.SetPrivacy(c.ValData.GetPrivacy())
+	valCreateReqData.SetReadme(c.ValData.GetReadme())
 
-	valCreateReq := c.ValClient.ValsAPI.ValsCreateVersion(ctx, valData.GetId())
-	valCreateReq.ValsCreateRequest(*valCreateReqData)
-
+	// Make the request
+	valCreateReq := c.ValClient.ValsAPI.ValsCreateVersion(ctx, c.ValData.GetId()).ValsCreateRequest(*valCreateReqData)
 	extVal, resp, err := valCreateReq.Execute()
 	if err != nil || resp.StatusCode != http.StatusOK {
+		log.Println("Error updating val", err)
 		return 0, syscall.EIO
 	}
+
+	// Update the val to the new updated val
 	c.ValData = *extVal
 
-	return uint32(len(data)), 0
+	// We wrote all new data
+	return uint32(newDataLen), syscall.Errno(0)
 }
 
 var _ = (fs.NodeGetattrer)((*ValFile)(nil))
@@ -148,8 +156,21 @@ func (f *ValFile) Getattr(
 	out.Mode = ValFileMode
 
 	// Set timestamps to be modified now
-	now := time.Now()
-	out.SetTimes(&now, &now, &now)
+	modified := f.ValData.VersionCreatedAt
+	out.SetTimes(modified, modified, modified)
 
 	return syscall.F_OK
+}
+
+var _ = (fs.NodeSetattrer)((*ValFile)(nil))
+
+// Accept the request to change attrs, but ignore the new attrs, to comply with
+// editors expecting to be able to change them
+func (f *ValFile) Setattr(
+	ctx context.Context,
+	fh fs.FileHandle,
+	in *fuse.SetAttrIn,
+	out *fuse.AttrOut,
+) syscall.Errno {
+	return 0
 }
