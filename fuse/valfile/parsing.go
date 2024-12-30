@@ -22,7 +22,7 @@ type ValFrontmatterLinks struct {
 
 type ValFrontmatter struct {
 	Id      string              `yaml:"id" lc:"🔒"`
-	Version int32               `yaml:"version" lc:"🔒"`
+	Version int32               `yaml:"version" lc:"🔒 (reopen file to see change)"`
 	Privacy string              `yaml:"privacy" lc:"(public|private|unlisted)"`
 	Links   ValFrontmatterLinks `yaml:"links"`
 	Readme  string              `yaml:"readme"`
@@ -62,9 +62,8 @@ func NewValPackage(val *valgo.ExtendedVal) ValPackage {
 	return ValPackage{Val: val}
 }
 
-// Convert the val contained in the ValPackage to a package with metadata at the
-// top and the code of the val underneath
-func (v *ValPackage) ToText() (string, error) {
+// Get just the metadata text
+func (v *ValPackage) GetFrontmatterText() (string, error) {
 	link := v.Val.GetLinks()
 
 	frontmatterValLinks := ValFrontmatterLinks{
@@ -85,10 +84,21 @@ func (v *ValPackage) ToText() (string, error) {
 		return "", err
 	}
 
-	combined := "/*---\n" + string(frontmatterYAML) + "---*/\n\n" + v.Val.GetCode()
+	return "/*---\n" + string(frontmatterYAML) + "---*/\n\n", nil
+}
+
+// Convert the val contained in the ValPackage to a package with metadata at the
+// top and the code of the val underneath
+func (v *ValPackage) ToText() (*string, error) {
+	frontmatter, err := v.GetFrontmatterText()
+	if err != nil {
+		return nil, err
+	}
+
+	combined := frontmatter + v.Val.GetCode()
 	finalized := AffixShebang(combined) // add a shebang so val can be executed
 
-	return finalized, nil
+	return &finalized, nil
 }
 
 func (v *ValPackage) Len() (int, error) {
@@ -97,7 +107,7 @@ func (v *ValPackage) Len() (int, error) {
 		return 0, err
 	}
 
-	return len(contents), nil
+	return len(*contents), nil
 }
 
 // Set the contents of a val package. Updates underlying val by deconstructing
