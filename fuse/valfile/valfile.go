@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"syscall"
+	"time"
 
 	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -16,13 +17,43 @@ const ValFileMode = syscall.S_IFREG | 0o777
 // A file in the val file system, with metadata about the file and an inode
 type ValFile struct {
 	fs.Inode
-	ValData   valgo.ExtendedVal
-	ValClient *valgo.APIClient
+	ModifiedAt time.Time
+	ValData    valgo.ExtendedVal
+	ValClient  *valgo.APIClient
+}
+
+// Create a new val file, but does not attach an inode embedding
+func NewValFile(
+	val valgo.ExtendedVal,
+	client *valgo.APIClient,
+) (*ValFile, error) {
+	// Get the last modified date to cache
+	modified := val.VersionCreatedAt
+	if modified == nil {
+		ctx := context.Background()
+		versionList, resp, err := client.ValsAPI.ValsList(ctx, val.Id).Offset(0).Limit(1).Execute()
+		if err != nil || resp.StatusCode != http.StatusOK {
+			log.Println("Error fetching version list", err)
+			return nil, err
+		}
+		modified = &versionList.Data[0].CreatedAt
+	}
+
+	return &ValFile{
+		ValData:    val,
+		ValClient:  client,
+		ModifiedAt: *modified,
+	}, nil
 }
 
 // A file handle that carries separate content for each open call
 type BytesFileHandle struct {
 	content []byte
+}
+
+// Update modified time to be now
+func (f *ValFile) ModifiedNow() {
+	f.ModifiedAt = time.Now()
 }
 
 var _ = (fs.NodeOpener)((*ValFile)(nil))
@@ -77,12 +108,14 @@ func (c *ValFile) Write(
 	// Make sure the file handle is valid
 	handle, ok := fh.(*BytesFileHandle)
 	if !ok {
+		log.Println("File handle is not a BytesFileHandle")
 		return 0, syscall.EBADF
 	}
 
 	// Make sure not writing out of bounds
 	oldData := handle.content
 	if int(off) > len(oldData) {
+		log.Println("Offset greater than length of old data")
 		return 0, syscall.EINVAL
 	}
 
@@ -103,36 +136,67 @@ func (c *ValFile) Write(
 
 	// Put the new data into the val
 	newValPackage := NewValPackage(&c.ValData)
-	newValPackage.UpdateVal(newDataStr)
+	// "Old val" refers to the val with the new code with the old meta
+	newCode, _, err := DeconstructVal(newDataStr) // Save the old val
+	orignialVal := c.ValData
+	newCodeOldMetaPackage := NewValPackage(&orignialVal)
+	orignialVal.SetCode(newDataStr)
+	orignialVal.SetCode(*newCode)       // only update the code of newCodeOldMetaPackage
+	newValPackage.UpdateVal(newDataStr) // update newVal with new meta, not newCodeOldMetaPackage
 
 	// Create new packed file contents
 	newPackedCode, err := newValPackage.ToText()
 	if err != nil {
+		log.Println("Error packing new code", err)
+		return 0, syscall.EIO
+	}
+	oldPackedCode, err := newCodeOldMetaPackage.ToText()
+	log.Println("Old packed code", oldPackedCode)
+	if err != nil {
+		log.Println("Error packing old code", err)
 		return 0, syscall.EIO
 	}
 
 	// Update the file handle stored code
-	handle.content = []byte(newPackedCode)
+	handle.content = []byte(oldPackedCode)
+	log.Println("Updating file handle content to", handle.content)
+	c.ModifiedNow()
+	log.Println("Modified at", c.ModifiedAt)
 
-	// Update the code of the actual val
-	valCreateReqData := valgo.NewValsCreateRequest(c.ValData.GetCode())
+	// Now, start making network requests in the background to update the val
+	go func() {
+		// Wait a bit after the first modification
+		time.Sleep(5000 * time.Millisecond)
 
-	// The things the user can change in the yaml metadata
-	valCreateReqData.SetPrivacy(c.ValData.GetPrivacy())
-	valCreateReqData.SetReadme(c.ValData.GetReadme())
+		// Update the code of the actual val
+		valCreateReqData := valgo.NewValsCreateRequest(c.ValData.GetCode())
 
-	// Make the request
-	valCreateReq := c.ValClient.ValsAPI.ValsCreateVersion(ctx, c.ValData.GetId()).ValsCreateRequest(*valCreateReqData)
-	extVal, resp, err := valCreateReq.Execute()
-	if err != nil || resp.StatusCode != http.StatusOK {
-		log.Println("Error updating val", err)
-		return 0, syscall.EIO
-	}
+		// The things the user can change in the yaml metadata
+		valCreateReqData.SetPrivacy(c.ValData.GetPrivacy())
+		valCreateReqData.SetReadme(c.ValData.GetReadme())
 
-	// Update the val to the new updated val
-	c.ValData = *extVal
+		// Make the request
+		valCreateReq := c.ValClient.ValsAPI.ValsCreateVersion(ctx, c.ValData.GetId()).ValsCreateRequest(*valCreateReqData)
+		extVal, resp, err := valCreateReq.Execute()
+		if err != nil || resp.StatusCode != http.StatusOK {
+			log.Println("Error updating val", err)
+		} else {
+			log.Println("Successfully updated val")
+		}
 
-	// We wrote all new data
+		// Update the val to the new updated val
+		c.ValData = *extVal
+
+		// Update the original val with the new code
+		handle.content = []byte(newPackedCode)
+		c.ModifiedNow()
+		log.Println("Modified at", c.ModifiedAt)
+		notifyErr := c.NotifyContent(0, int64(len(handle.content)))
+		log.Println("Notified kernel to update val file. Code:", notifyErr)
+	}()
+
+	// We are writing all the new data but to prevent lag we want to say we wrote
+	// right away
 	return uint32(newDataLen), syscall.Errno(0)
 }
 
@@ -156,7 +220,9 @@ func (f *ValFile) Getattr(
 	out.Mode = ValFileMode
 
 	// Set timestamps to be modified now
-	modified := f.ValData.VersionCreatedAt
+	modified := &f.ModifiedAt
+
+	log.Println("Setting times to", modified)
 	out.SetTimes(modified, modified, modified)
 
 	return syscall.F_OK

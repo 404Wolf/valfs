@@ -2,7 +2,6 @@ package fuse
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"regexp"
 
@@ -31,7 +30,7 @@ type ValFrontmatter struct {
 
 // Break apart a val into its metadata that the user can edit, and the raw code
 // contents
-func deconstruct(contents string) (
+func DeconstructVal(contents string) (
 	code *string,
 	meta *ValFrontmatter,
 	err error,
@@ -104,10 +103,9 @@ func (v *ValPackage) Len() (int, error) {
 // Set the contents of a val package. Updates underlying val by deconstructing
 // the contents into frontmatter and code.
 func (v *ValPackage) UpdateVal(contents string) error {
-	fmt.Println("contents", contents)
-	code, frontmatter, err := deconstruct(contents)
+	code, frontmatter, err := DeconstructVal(contents)
 	if err != nil {
-		log.Println("err", err)
+		log.Println(err)
 		return err
 	}
 

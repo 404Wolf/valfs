@@ -23,6 +23,7 @@
             delve
             cobra-cli
             openapi-generator-cli
+            inotify-tools
           ];
         };
       };
