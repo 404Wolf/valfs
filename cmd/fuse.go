@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
-	client "github.com/404wolf/valfs/client"
 	"log"
 	"os"
+
+	client "github.com/404wolf/valfs/client"
 
 	valfs "github.com/404wolf/valfs/fuse/valfs"
 	"github.com/spf13/cobra"
@@ -24,7 +26,7 @@ var mountCmd = &cobra.Command{
 		// Create a root node
 		root := valfs.NewValFS(
 			directory,
-			client.NewClient(os.Getenv("VALTOWN_API_KEY")),
+			client.NewClient(os.Getenv("VALTOWN_API_KEY"), context.Background()),
 		)
 
 		fmt.Println("Mounting ValFS file system at", directory)

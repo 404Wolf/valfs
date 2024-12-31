@@ -2,22 +2,26 @@ package fuse
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"regexp"
 
+	client "github.com/404wolf/valfs/client"
 	"github.com/404wolf/valgo"
 	"github.com/goccy/go-yaml"
 	yamlcomment "github.com/zijiren233/yaml-comment"
 )
 
 type ValPackage struct {
-	Val *valgo.ExtendedVal
+	Val    *valgo.ExtendedVal
+	client *client.Client
 }
 
 type ValFrontmatterLinks struct {
 	Website  string  `yaml:"valtown" lc:"🔒"`
 	Module   string  `yaml:"esmModule" lc:"🔒"`
 	Endpoint *string `yaml:"deployment,omitempty" lc:"🔒"`
+	Email    *string `yaml:"email,omitempty" lc:"🔒"`
 }
 
 type ValFrontmatter struct {
@@ -58,8 +62,8 @@ func DeconstructVal(contents string) (
 }
 
 // Create a new val package from a val
-func NewValPackage(val *valgo.ExtendedVal) ValPackage {
-	return ValPackage{Val: val}
+func NewValPackage(client *client.Client, val *valgo.ExtendedVal) ValPackage {
+	return ValPackage{Val: val, client: client}
 }
 
 // Get just the metadata text
@@ -71,6 +75,12 @@ func (v *ValPackage) GetFrontmatterText() (string, error) {
 		Module:   link.Module,
 		Endpoint: link.Endpoint,
 	}
+
+	if v.Val.Type == "email" {
+		emailAddress := fmt.Sprintf("%s.%s@valtown.email", v.client.User.GetUsername(), v.Val.Name)
+		frontmatterValLinks.Email = &emailAddress
+	}
+
 	frontmatterVal := ValFrontmatter{
 		Id:      v.Val.Id,
 		Version: v.Val.Version,

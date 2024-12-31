@@ -3,6 +3,7 @@ package fuse
 import (
 	"context"
 	"log"
+	"regexp"
 	"syscall"
 	"time"
 
@@ -35,8 +36,8 @@ func NewMyVals(parent *fs.Inode, client *client.Client, ctx context.Context) *My
 	refreshVals(ctx, &myValsDir.Inode, *client)
 	go func() {
 		for range ticker.C {
-			refreshVals(ctx, parent, *client)
-			log.Println("Refreshed vals")
+			// refreshVals(ctx, parent, *client)
+			// log.Println("Refreshed vals")
 		}
 	}()
 
@@ -72,11 +73,6 @@ func (c *MyVals) Unlink(ctx context.Context, name string) syscall.Errno {
 
 var _ = (fs.NodeCreater)((*MyVals)(nil))
 
-//go:embed init.ts
-var DefaultValContents []byte
-
-const DefaultValType = valfile.Script
-
 // Create a new val on new file creation
 func (c *MyVals) Create(
 	ctx context.Context,
@@ -84,38 +80,65 @@ func (c *MyVals) Create(
 	flags uint32,
 	mode uint32,
 	entryOut *fuse.EntryOut,
-) (inode *fs.Inode, fh fs.FileHandle, fuseFlags uint32, error syscall.Errno) {
+) (inode *fs.Inode, fh fs.FileHandle, fuseFlags uint32, code syscall.Errno) {
 	// Parse the filename of the val
 	valName, valType := valfile.ExtractFromFilename(name)
 
-	log.Printf("Creating val %s of type %s", valName, valType)
-	createReq := valgo.NewValsCreateRequest(string(DefaultValContents))
-	createReq.Name = &valName
-	valTypeStr := string(valType)
-	createReq.Type = &valTypeStr
-	valPrivacyStr := "private"
-	createReq.Privacy = &valPrivacyStr
-	val, _, err := c.client.APIClient.ValsAPI.ValsCreate(ctx).ValsCreateRequest(*createReq).Execute()
-	log.Printf("Created val %s", val.Id)
+	// Try to guess the type if it is unknown
+	if valType == valfile.Unknown {
+		re := regexp.MustCompile(`^([^\.]+\.?)+\.tsx?`)
+		if re.MatchString(name) {
+			valName = re.FindStringSubmatch(name)[1]
+			valType = valfile.DefaultType
+		} else {
+			return nil, nil, 0, syscall.EINVAL
+		}
+	}
 
+	log.Printf("Creating val %s of type %s", valName, valType)
+
+	// Make a request to create the val
+	templateCode := valfile.GetTemplate(valType)
+	createReq := valgo.NewValsCreateRequest(string(templateCode))
+	createReq.SetName(valName)
+	createReq.SetType(string(valType))
+	createReq.SetPrivacy(valfile.DefaultPrivacy)
+	val, resp, err := c.client.APIClient.ValsAPI.ValsCreate(ctx).ValsCreateRequest(*createReq).Execute()
+
+	// Check if the request was successful
 	if err != nil {
 		log.Printf("Error creating val: %v", err)
 		return nil, nil, 0, syscall.EIO
+	} else if resp.StatusCode != 201 {
+		log.Printf("Error creating val: %v", resp)
+		return nil, nil, 0, syscall.EIO
+	} else {
+		log.Printf("Created val %v", val)
 	}
+	log.Printf("Created val %s", val.Id)
 
 	// Create a val file that we can hand over
 	valFile, err := valfile.NewValFile(*val, c.client)
-	attr := fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0}
-	c.Inode.NewPersistentInode(ctx, &valFile.Inode, attr)
-
 	if err != nil {
 		log.Fatal("Error creating val file", err)
 	}
+	c.NewPersistentInode(
+		ctx,
+		valFile,
+		fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
 
-	// Add the val file to the folder
+	// Afterwards move the file
 	filename := valfile.ConstructFilename(val.Name, valfile.ValType(val.Type))
-	c.AddChild(filename, &valFile.Inode, true)
-	log.Printf("Added val %s to mine", val.Id)
+	if filename != name {
+		go func() {
+			c.MvChild(name, &c.Inode, filename, true)
+		}()
+	}
 
-	return &valFile.Inode, &valfile.ValFileHandle{}, fuse.FOPEN_DIRECT_IO, syscall.F_OK
+	// Open the file handle
+	fileHandle, _, _ := valFile.Open(ctx, flags)
+	valFile.ModifiedNow()
+
+	// Create a file handle
+	return &valFile.Inode, &fileHandle, fuse.FOPEN_DIRECT_IO, syscall.F_OK
 }

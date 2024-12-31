@@ -2,7 +2,8 @@
   "compilerOptions": {
     "noImplicitAny": false,
     "allowSyntheticDefaultImports": true,
-    "strict": false
+    "strict": false,
+    "types": ["https://www.val.town/types/valtown.d.ts", "dom"]
   },
   "lock": false
 }

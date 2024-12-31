@@ -53,6 +53,7 @@ func NewValFile(
 // A file handle that carries separate content for each open call
 type ValFileHandle struct {
 	ValFile *ValFile
+	client  *client.Client
 }
 
 // Update modified time to be now
@@ -73,10 +74,11 @@ func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 	// Create a new file handle for the val
 	fh = &ValFileHandle{
 		ValFile: f,
+		client:  f.client,
 	}
 
 	// Return FOPEN_DIRECT_IO so content is not cached
-	return fh, fuse.FOPEN_DIRECT_IO, 0
+	return fh, fuse.FOPEN_DIRECT_IO, syscall.F_OK
 }
 
 var _ = (fs.FileReader)((*ValFileHandle)(nil))
@@ -90,7 +92,7 @@ func (fh *ValFileHandle) Read(
 	log.Println("Reading val file", fh.ValFile.ValData.Name)
 
 	// Provide the Val's code as the data
-	valPackage := ValPackage{Val: &fh.ValFile.ValData}
+	valPackage := NewValPackage(fh.client, &fh.ValFile.ValData)
 	content, err := valPackage.ToText()
 	if err != nil {
 		return nil, syscall.EIO
@@ -102,7 +104,7 @@ func (fh *ValFileHandle) Read(
 	if end > int64(len(bytes)) {
 		end = int64(len(bytes))
 	}
-	return fuse.ReadResultData(bytes[off:end]), 0
+	return fuse.ReadResultData(bytes[off:end]), syscall.F_OK
 }
 
 var _ = (fs.NodeWriter)((*ValFile)(nil))
@@ -168,7 +170,7 @@ func (f *ValFile) Getattr(
 
 	// Set the mode to indicate a regular file with read, write, and execute
 	// permissions for all
-	valPackage := ValPackage{Val: &f.ValData}
+	valPackage := NewValPackage(f.client, &f.ValData)
 	contentLen, err := valPackage.Len()
 	if err != nil {
 		log.Println("Error getting content length", err)
