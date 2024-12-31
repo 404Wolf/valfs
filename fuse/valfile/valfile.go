@@ -7,6 +7,7 @@ import (
 	"syscall"
 	"time"
 
+	client "github.com/404wolf/valfs/client"
 	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -19,29 +20,32 @@ type ValFile struct {
 	fs.Inode
 	ModifiedAt time.Time
 	ValData    valgo.ExtendedVal
-	ValClient  *valgo.APIClient
+	client     *client.Client
 }
 
 // Create a new val file, but does not attach an inode embedding
 func NewValFile(
 	val valgo.ExtendedVal,
-	client *valgo.APIClient,
+	client *client.Client,
 ) (*ValFile, error) {
+	log.Println("Create new val file named", val.Name)
+
 	// Get the last modified date to cache
 	modified := val.VersionCreatedAt
 	if modified == nil {
 		ctx := context.Background()
-		versionList, resp, err := client.ValsAPI.ValsList(ctx, val.Id).Offset(0).Limit(1).Execute()
+		versionList, resp, err := client.APIClient.ValsAPI.ValsList(ctx, val.Id).Offset(0).Limit(1).Execute()
 		if err != nil || resp.StatusCode != http.StatusOK {
 			log.Println("Error fetching version list", err)
 			return nil, err
 		}
 		modified = &versionList.Data[0].CreatedAt
 	}
+	log.Println("Setting new val file modified at to", *modified)
 
 	return &ValFile{
 		ValData:    val,
-		ValClient:  client,
+		client:     client,
 		ModifiedAt: *modified,
 	}, nil
 }
@@ -64,6 +68,9 @@ func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 	fuseFlags uint32,
 	errno syscall.Errno,
 ) {
+	log.Println("Opening val file", f.ValData.Name)
+
+	// Create a new file handle for the val
 	fh = &ValFileHandle{
 		ValFile: f,
 	}
@@ -80,6 +87,8 @@ func (fh *ValFileHandle) Read(
 	dest []byte,
 	off int64,
 ) (fuse.ReadResult, syscall.Errno) {
+	log.Println("Reading val file", fh.ValFile.ValData.Name)
+
 	// Provide the Val's code as the data
 	valPackage := ValPackage{Val: &fh.ValFile.ValData}
 	content, err := valPackage.ToText()
@@ -88,12 +97,11 @@ func (fh *ValFileHandle) Read(
 	}
 	bytes := []byte(*content)
 
+	// Get the requested region and return it
 	end := off + int64(len(dest))
 	if end > int64(len(bytes)) {
 		end = int64(len(bytes))
 	}
-	log.Printf("Reading from %d to %d", off, end)
-
 	return fuse.ReadResultData(bytes[off:end]), 0
 }
 
@@ -106,7 +114,12 @@ func (c *ValFile) Write(
 	data []byte,
 	off int64,
 ) (written uint32, errno syscall.Errno) {
+	log.Println("Writing to val file", c.ValData.Name)
+
 	go func() {
+		// Commit the writes to val town API
+		log.Println("Commiting the write to", c.ValData.Name)
+
 		// Create new packed file contents
 		newValPackage := ValPackage{Val: &c.ValData}
 		err := newValPackage.UpdateVal(string(data))
@@ -114,6 +127,7 @@ func (c *ValFile) Write(
 			log.Println("Error updating val package", err)
 			return
 		}
+		log.Println("Successfully updated val package for", c.ValData.Name)
 
 		// The things the user can change in the yaml metadata
 		valCreateReqData := valgo.NewValsCreateRequest(newValPackage.Val.GetCode())
@@ -121,18 +135,19 @@ func (c *ValFile) Write(
 		valCreateReqData.SetReadme(c.ValData.GetReadme())
 
 		// Make the request to update the val
-		valCreateReq := c.ValClient.ValsAPI.ValsCreateVersion(ctx, c.ValData.GetId()).ValsCreateRequest(*valCreateReqData)
+		valCreateReq := c.client.APIClient.ValsAPI.ValsCreateVersion(ctx, c.ValData.GetId()).ValsCreateRequest(*valCreateReqData)
 		extVal, resp, err := valCreateReq.Execute()
 		if err != nil || resp.StatusCode != http.StatusOK {
 			log.Println("Error updating val", err)
 		} else {
-			log.Println("Successfully updated val")
+			log.Println("Successfully updated val", c.ValData.Name)
 		}
 
 		// Update the val to the new updated val
 		c.ValData = *extVal
 		c.NotifyContent(0, int64(len(data)))
 		c.ModifiedNow()
+		log.Println("Updated val file", c.ValData.Name)
 	}()
 
 	// We are writing all the new data but to prevent lag we want to say we wrote
@@ -149,6 +164,8 @@ func (f *ValFile) Getattr(
 	fh fs.FileHandle,
 	out *fuse.AttrOut,
 ) syscall.Errno {
+	log.Println("Getting attributes for val file", f.ValData.Name)
+
 	// Set the mode to indicate a regular file with read, write, and execute
 	// permissions for all
 	valPackage := ValPackage{Val: &f.ValData}
@@ -165,6 +182,9 @@ func (f *ValFile) Getattr(
 	modified := &f.ModifiedAt
 	out.SetTimes(modified, modified, modified)
 
+	log.Println("Got attributes for val file", f.ValData.Name)
+	log.Println("Size:", out.Size, "Mode:", out.Mode, "Modified:", *modified)
+
 	return syscall.F_OK
 }
 
@@ -178,6 +198,8 @@ func (f *ValFile) Setattr(
 	in *fuse.SetAttrIn,
 	out *fuse.AttrOut,
 ) syscall.Errno {
+	log.Println("Setting attributes for val file", f.ValData.Name)
+
 	out.Size = in.Size
 	out.Mode = ValFileMode
 	out.Atime = in.Atime
