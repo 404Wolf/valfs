@@ -13,18 +13,24 @@
   }:
     flake-utils.lib.eachDefaultSystem (system: let
       pkgs = import nixpkgs {inherit system;};
+      python = pkgs.python3.withPackages (ps:
+        with ps; [
+          requests
+        ]);
     in {
       devShells = {
         default = pkgs.mkShell {
           hardeningDisable = ["all"];
-          packages = with pkgs; [
-            go
-            gopls
-            delve
-            cobra-cli
-            openapi-generator-cli
-            inotify-tools
-          ];
+          packages =
+            [python]
+            ++ (with pkgs; [
+              go
+              gopls
+              delve
+              cobra-cli
+              openapi-generator-cli
+              inotify-tools
+            ]);
         };
       };
       packages = rec {

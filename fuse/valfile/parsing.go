@@ -77,7 +77,11 @@ func (v *ValPackage) GetFrontmatterText() (string, error) {
 	}
 
 	if v.Val.Type == "email" {
-		emailAddress := fmt.Sprintf("%s.%s@valtown.email", v.client.User.GetUsername(), v.Val.Name)
+		if v.Val.GetAuthor().Username.Get() == nil {
+			return "", errors.New("Author username is nil")
+		}
+
+		emailAddress := fmt.Sprintf("%s.%s@valtown.email", *v.Val.GetAuthor().Username.Get(), v.Val.Name)
 		frontmatterValLinks.Email = &emailAddress
 	}
 
