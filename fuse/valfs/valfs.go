@@ -11,7 +11,7 @@ import (
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 
-	client "github.com/404wolf/valfs/client"
+	common "github.com/404wolf/valfs/common"
 	valfile "github.com/404wolf/valfs/fuse/valfile"
 	myvals "github.com/404wolf/valfs/fuse/valfs/myvals"
 )
@@ -20,11 +20,11 @@ import (
 type ValFS struct {
 	fs.Inode
 	MountDir string
-	client   *client.Client
+	client   *common.Client
 }
 
 // Create a new ValFS top level inode
-func NewValFS(mountDir string, client *client.Client) *ValFS {
+func NewValFS(mountDir string, client *common.Client) *ValFS {
 	return &ValFS{
 		MountDir: mountDir,
 		client:   client,
@@ -64,7 +64,7 @@ func (c *ValFS) ValToValFile(
 	ctx context.Context,
 	val valgo.ExtendedVal,
 ) *valfile.ValFile {
-	valFile, err := valfile.NewValFile(val, c.client)
+	valFile, err := valfile.NewValFileFromExtended(val, c.client)
 	if err != nil {
 		log.Fatal("Error creating val file", err)
 	}

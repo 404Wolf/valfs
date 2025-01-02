@@ -6,7 +6,7 @@ import (
 	"log"
 	"regexp"
 
-	client "github.com/404wolf/valfs/client"
+	common "github.com/404wolf/valfs/common"
 	"github.com/404wolf/valgo"
 	"github.com/goccy/go-yaml"
 	yamlcomment "github.com/zijiren233/yaml-comment"
@@ -14,7 +14,7 @@ import (
 
 type ValPackage struct {
 	Val    *valgo.ExtendedVal
-	client *client.Client
+	client *common.Client
 }
 
 type ValFrontmatterLinks struct {
@@ -48,8 +48,22 @@ func DeconstructVal(contents string) (
 	frontmatterMatch := frontmatterMatches[0]
 
 	// Extract the code
-	frontmatterEndIndex := frontmatterRe.FindStringIndex(contents)[1]
-	codeSection := contents[frontmatterEndIndex+4:]
+	if len(contents) < 4 {
+		return nil, nil, errors.New("No code found")
+	}
+	frontmatterFindIndex := frontmatterRe.FindStringIndex(contents)
+	if frontmatterFindIndex == nil {
+		return nil, nil, errors.New("Invalid frontmatter format")
+	}
+	frontmatterEndIndex := frontmatterFindIndex[1]
+
+	var offset int
+	if contents[frontmatterEndIndex+3] == '\n' {
+		offset = 4
+	} else {
+		offset = 3
+	}
+	codeSection := contents[frontmatterEndIndex+offset:]
 
 	// Deserialize the frontmatter
 	meta = &ValFrontmatter{}
@@ -62,7 +76,7 @@ func DeconstructVal(contents string) (
 }
 
 // Create a new val package from a val
-func NewValPackage(client *client.Client, val *valgo.ExtendedVal) ValPackage {
+func NewValPackage(client *common.Client, val *valgo.ExtendedVal) ValPackage {
 	return ValPackage{Val: val, client: client}
 }
 
@@ -77,7 +91,11 @@ func (v *ValPackage) GetFrontmatterText() (string, error) {
 	}
 
 	if v.Val.Type == "email" {
-		emailAddress := fmt.Sprintf("%s.%s@valtown.email", v.client.User.GetUsername(), v.Val.Name)
+		if v.Val.GetAuthor().Username.Get() == nil {
+			return "", errors.New("Author username is nil")
+		}
+
+		emailAddress := fmt.Sprintf("%s.%s@valtown.email", *v.Val.GetAuthor().Username.Get(), v.Val.Name)
 		frontmatterValLinks.Email = &emailAddress
 	}
 

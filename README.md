@@ -58,3 +58,6 @@ Some of the TODOs hinge on Val Town improving their API and exposing more functi
 
 ## ValFS Operations
 - deno.json automatic caching
+
+## Bugs
+- creating vals when vals already exist with that name causes them to have an automatic name (maybe this is ok)

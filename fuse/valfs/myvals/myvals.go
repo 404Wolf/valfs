@@ -13,19 +13,19 @@ import (
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 
-	client "github.com/404wolf/valfs/client"
+	common "github.com/404wolf/valfs/common"
 	valfile "github.com/404wolf/valfs/fuse/valfile"
 )
 
 // The folder with all of my vals in it
 type MyVals struct {
 	fs.Inode
-	client *client.Client
+	client *common.Client
 }
 
 // Set up background refresh of vals and retreive an auto updating folder of
 // val files
-func NewMyVals(parent *fs.Inode, client *client.Client, ctx context.Context) *MyVals {
+func NewMyVals(parent *fs.Inode, client *common.Client, ctx context.Context) *MyVals {
 	myValsDir := &MyVals{
 		client: client,
 	}
@@ -36,8 +36,8 @@ func NewMyVals(parent *fs.Inode, client *client.Client, ctx context.Context) *My
 	refreshVals(ctx, &myValsDir.Inode, *client)
 	go func() {
 		for range ticker.C {
-			// refreshVals(ctx, parent, *client)
-			// log.Println("Refreshed vals")
+			refreshVals(ctx, parent, *client)
+			log.Println("Refreshed vals")
 		}
 	}()
 
@@ -60,13 +60,13 @@ func (c *MyVals) Unlink(ctx context.Context, name string) syscall.Errno {
 		return syscall.EINVAL
 	}
 
-	log.Printf("Deleting val %s", valFile.ValData.Id)
-	_, err := c.client.APIClient.ValsAPI.ValsDelete(ctx, valFile.ValData.Id).Execute()
+	log.Printf("Deleting val %s", valFile.ExtendedData.Id)
+	_, err := c.client.APIClient.ValsAPI.ValsDelete(ctx, valFile.ExtendedData.Id).Execute()
 	if err != nil {
-		log.Printf("Error deleting val %s: %v", valFile.ValData.Id, err)
+		log.Printf("Error deleting val %s: %v", valFile.ExtendedData.Id, err)
 		return syscall.EIO
 	}
-	log.Printf("Deleted val %s", valFile.ValData.Id)
+	log.Printf("Deleted val %s", valFile.ExtendedData.Id)
 
 	return 0
 }
@@ -118,7 +118,7 @@ func (c *MyVals) Create(
 	log.Printf("Created val %s", val.Id)
 
 	// Create a val file that we can hand over
-	valFile, err := valfile.NewValFile(*val, c.client)
+	valFile, err := valfile.NewValFileFromExtended(*val, c.client)
 	if err != nil {
 		log.Fatal("Error creating val file", err)
 	}
