@@ -131,25 +131,17 @@ func (c *MyVals) Create(
 	if err != nil {
 		log.Fatal("Error creating val file", err)
 	}
-	c.NewPersistentInode(
+	newInode := c.NewPersistentInode(
 		ctx,
 		valFile,
 		fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
-
-	// Afterwards move the file
-	filename := valfile.ConstructFilename(val.Name, valfile.ValType(val.Type))
-	if filename != name {
-		go func() {
-			c.MvChild(name, &c.Inode, filename, true)
-		}()
-	}
 
 	// Open the file handle
 	fileHandle, _, _ := valFile.Open(ctx, flags)
 	valFile.ModifiedNow()
 
 	// Create a file handle
-	return &valFile.Inode, &fileHandle, fuse.FOPEN_DIRECT_IO, syscall.F_OK
+	return newInode, &fileHandle, fuse.FOPEN_DIRECT_IO, syscall.F_OK
 }
 
 var _ = (fs.NodeRenamer)((*MyVals)(nil))
@@ -169,8 +161,8 @@ func (c *MyVals) Rename(
 	}
 
 	// Validate the new filename
-	hopeless, valName, valType := guessFilename(newName)
-	if hopeless {
+	valName, valType := valfile.ExtractFromFilename(newName)
+	if valType == valfile.Unknown {
 		return syscall.EINVAL
 	}
 
@@ -187,8 +179,8 @@ func (c *MyVals) Rename(
 
 	// Prepare the update request
 	valUpdateReq := valgo.NewValsUpdateRequest()
-	valUpdateReq.SetName(*valName)
-	valUpdateReq.SetType(string(*valType))
+	valUpdateReq.SetName(valName)
+	valUpdateReq.SetType(string(valType))
 
 	// Update the val in the backend
 	resp, err := c.client.APIClient.ValsAPI.ValsUpdate(ctx, valFile.BasicData.Id).ValsUpdateRequest(*valUpdateReq).Execute()
@@ -197,9 +189,7 @@ func (c *MyVals) Rename(
 		return syscall.EIO
 	}
 
-	// Perform the rename in the filesystem
-	newValidatedFilename := valfile.ConstructFilename(*valName, *valType)
-	c.Inode.ExchangeChild(oldName, c.EmbeddedInode(), newValidatedFilename)
+	// Perform the rename in the filesystem. Change the input
 
 	// Fetch what the change produced
 	extVal, resp, err := c.client.APIClient.ValsAPI.ValsGet(ctx, valFile.BasicData.Id).Execute()
@@ -208,8 +198,8 @@ func (c *MyVals) Rename(
 		return syscall.EIO
 	}
 	valFile.ExtendedData = extVal
-	valFile.BasicData.Name = *valName
-	valFile.BasicData.Type = string(*valType)
+	valFile.BasicData.Name = valName
+	valFile.BasicData.Type = string(valType)
 
 	return syscall.F_OK
 }
