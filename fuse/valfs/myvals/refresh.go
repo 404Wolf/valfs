@@ -12,37 +12,43 @@ import (
 	"github.com/hanwen/go-fuse/v2/fs"
 )
 
-var previousValsIds = make(map[string]*valfile.ValFile)
+var previousValIds = make(map[string]*valfile.ValFile)
 
 // Refresh the list of vals in the filesystem
-func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) {
+func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) (
+	created []*valfile.ValFile,
+	removed []*valfile.ValFile,
+) {
+	created = make([]*valfile.ValFile, 0)
+	removed = make([]*valfile.ValFile, 0)
+
 	newVals, err := getMyVals(ctx, client)
-	newValsIds := make(map[string]valgo.BasicVal)
+	newValsIdsToBasicVals := make(map[string]valgo.BasicVal)
 	for _, newVal := range newVals {
-		newValsIds[newVal.GetId()] = newVal
+		newValsIdsToBasicVals[newVal.GetId()] = newVal
 	}
 
 	log.Printf("Fetched %d vals", len(newVals))
 
 	if err != nil {
 		log.Printf(err.Error())
-		return
+		return created, removed
 	}
 
 	for _, newVal := range newVals {
-		prevValFile, exists := previousValsIds[newVal.GetId()]
+		prevValFile, exists := previousValIds[newVal.GetId()]
 
 		if !exists {
-			valFile, err := valfile.NewValFileLazyFetchExtended(ctx, newVal, &client)
+			valFile, err := valfile.NewValFileFromBasicVal(ctx, newVal, &client)
 			if err != nil {
 				log.Fatal("Error creating val file", err)
 			}
 			filename := valfile.ConstructFilename(newVal.GetName(), valfile.ValType(newVal.GetType()))
-			root.NewPersistentInode(
-				ctx,
-				valFile,
-				fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
+			root.NewPersistentInode(ctx, valFile, fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
 			root.AddChild(filename, &valFile.Inode, true)
+			previousValIds[newVal.GetId()] = valFile
+			created = append(created, valFile)
+
 			log.Printf("Added val %s, found fresh on valtown", newVal.GetId())
 		}
 
@@ -56,13 +62,18 @@ func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) {
 	}
 
 	// For each old val, if it is not in new vals remove it
-	for _, oldVal := range previousValsIds {
-		if _, exists := newValsIds[oldVal.BasicData.GetId()]; !exists {
+	for _, oldVal := range previousValIds {
+		if _, exists := newValsIdsToBasicVals[oldVal.BasicData.GetId()]; !exists {
 			filename := valfile.ConstructFilename(oldVal.BasicData.GetName(), valfile.ValType(oldVal.BasicData.GetType()))
+			removedValFile, _ := interface{}(root.GetChild(filename).EmbeddedInode()).(*valfile.ValFile)
+			removed = append(removed, removedValFile)
 			root.RmChild(filename)
+			delete(previousValIds, oldVal.BasicData.GetId())
 			log.Printf("Removed val %s no longer found on valtown", oldVal.BasicData.GetId())
 		}
 	}
+
+	return created, removed
 }
 
 const lookupCap = 99

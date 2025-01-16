@@ -26,7 +26,7 @@ var mountCmd = &cobra.Command{
 		// Create a root node
 		root := valfs.NewValFS(
 			directory,
-			common.NewClient(os.Getenv("VALTOWN_API_KEY"), context.Background()),
+			common.NewClient(os.Getenv("VAL_TOWN_API_KEY"), context.Background()),
 		)
 
 		fmt.Println("Mounting ValFS file system at", directory)

@@ -14,7 +14,7 @@ func setupClient() *valgo.APIClient {
 	configuration := valgo.NewConfiguration()
 	configuration.AddDefaultHeader(
 		"Authorization",
-		"Bearer "+os.Getenv("VALTOWN_API_KEY"),
+		"Bearer "+os.Getenv("VAL_TOWN_API_KEY"),
 	)
 	apiClient := valgo.NewAPIClient(configuration)
 	return apiClient

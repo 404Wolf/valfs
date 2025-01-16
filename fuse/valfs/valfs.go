@@ -3,7 +3,9 @@ package fuse
 import (
 	"context"
 	"log"
+	"os/exec"
 	"syscall"
+	"time"
 
 	_ "embed"
 
@@ -44,6 +46,17 @@ func (c *ValFS) Mount() error {
 			Debug: false,
 		},
 		OnAdd: func(ctx context.Context) {
+
+			ticker := time.NewTicker(5 * time.Second)
+			go func() {
+				for range ticker.C {
+					log.Printf("Caching Deno libraries")
+					cmd := exec.Command("deno", "cache", "--allow-import", "--allow-http", c.MountDir+"/myvals/*.tsx")
+					cmd.Start()
+					cmd.Process.Release()
+				}
+			}()
+
 			c.AddMyValsDir(ctx) // Add the folder with all the vals
 			c.AddDenoJSON(ctx)  // Add the deno.json file
 		},
@@ -64,7 +77,7 @@ func (c *ValFS) ValToValFile(
 	ctx context.Context,
 	val valgo.ExtendedVal,
 ) *valfile.ValFile {
-	valFile, err := valfile.NewValFileFromExtended(val, c.client)
+	valFile, err := valfile.NewValFileFromExtendedVal(val, c.client)
 	if err != nil {
 		log.Fatal("Error creating val file", err)
 	}

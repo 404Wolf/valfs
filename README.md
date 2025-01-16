@@ -4,7 +4,7 @@
 
 Quick start
 ```
-export VALTOWN_API_KEY=<something>
+export VAL_TOWN_API_KEY=<something>
 mkdir ./myvals
 ./valfs -- mount ./myvals
 ```
@@ -32,14 +32,23 @@ readme: ""
 console.log("Hello world!")
 ```
 
-You can view all the metadata about the val (and the URL it is deployed to!), and some of it you can edit. You can, of course, edit the actual val's content as well.
+Notice the magic shebang! Coming soon...
 
-A `deno.json` file is automatically populated in your vals' directory, so you can edit any of your vals in an IDE that supports the `denols` language server with ease.
+You can view all the metadata about the val (and the URL it is deployed to!),
+and some of it you can edit. You can, of course, edit the actual val's content
+as well.
+
+A `deno.json` file is automatically populated in your vals' directory, so you
+can edit any of your vals in an IDE that supports the `denols` language server
+with ease.
 
 ## Work in Progress
 
 Disclaimer: this is still a work in progress! Soon, I will...
-- Add execute support (in progress) so you can do ./myvals/foo.tsx and it runs on val town's runtime and pipes logs to stdout (this will require a bit of "reverse engineering" the API since it's internal)
+
+- Add execute support (in progress) so you can do ./myvals/foo.tsx and it runs
+on val town's runtime and pipes logs to stdout (this will require a bit of
+"reverse engineering" the API since it's internal)
 
 # TODOs
 
@@ -61,3 +70,14 @@ Some of the TODOs hinge on Val Town improving their API and exposing more functi
 
 ## Bugs
 - creating vals when vals already exist with that name causes them to have an automatic name (maybe this is ok)
+
+## Configuration
+Add options for:
+- whether files should be executable
+- whether to do lazy fetching
+
+### Deno
+- When you execute a val with ./, use
+  `deno run --lock=path/to/the-real-lock.lock script.X.tsx` and have val town
+  generate the lock file (with HTTP val wrapper + `Deno.readTextFile()` on
+  lockfile)
