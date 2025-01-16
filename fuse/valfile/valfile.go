@@ -2,58 +2,104 @@ package fuse
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"syscall"
 	"time"
 
-	client "github.com/404wolf/valfs/client"
+	common "github.com/404wolf/valfs/common"
 	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
 
-const ValFileMode = syscall.S_IFREG | 0o777
+const ValFileFlags = syscall.S_IFREG | 0o777
 
 // A file in the val file system, with metadata about the file and an inode
 type ValFile struct {
 	fs.Inode
-	ModifiedAt time.Time
-	ValData    valgo.ExtendedVal
-	client     *client.Client
+
+	ModifiedAt   time.Time
+	BasicData    valgo.BasicVal
+	ExtendedData *valgo.ExtendedVal
+	client       *common.Client
 }
 
-// Create a new val file, but does not attach an inode embedding
-func NewValFile(
-	val valgo.ExtendedVal,
-	client *client.Client,
-) (*ValFile, error) {
-	log.Println("Create new val file named", val.Name)
+// Get the extended val data for the val. If it is already a member of the
+// valfile then retreive it from cache. If it has not been fetched yet then
+// fetch it.
+func (f *ValFile) GetExtendedData(ctx context.Context) (*valgo.ExtendedVal, error) {
+	if f.ExtendedData == nil {
+		extVal, resp, err := f.client.APIClient.ValsAPI.ValsGet(ctx, f.BasicData.GetId()).Execute()
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return nil, errors.New("Failed to fetch extended data")
+		}
+		f.ExtendedData = extVal
+	}
+	return f.ExtendedData, nil
+}
 
-	// Get the last modified date to cache
+// Get the date at which the last version of the underlying val was created at
+func getValVersionCreatedAt(val valgo.ExtendedVal, client *common.Client) *time.Time {
 	modified := val.VersionCreatedAt
 	if modified == nil {
 		ctx := context.Background()
-		versionList, resp, err := client.APIClient.ValsAPI.ValsList(ctx, val.Id).Offset(0).Limit(1).Execute()
+		versionList, resp, err := client.APIClient.ValsAPI.ValsList(ctx,
+			val.Id).Offset(0).Limit(1).Execute()
 		if err != nil || resp.StatusCode != http.StatusOK {
 			log.Println("Error fetching version list", err)
-			return nil, err
 		}
 		modified = &versionList.Data[0].CreatedAt
 	}
-	log.Println("Setting new val file modified at to", *modified)
+	return modified
+}
+
+// Reading val files requires having access to the extended val file with all
+// of the metadata since metadata is placed at the top of files in frontmatter
+// yaml. However, just basic vald data (which you get from listing your vals,
+// and other bulk actions) is sufficient for some operations like listing vals.
+// To conserve memory and reduce unncessary API requests, if we create a val
+// file from a basic val we will automatically fetch the extended val when a
+// file handle is requested, instead of at the time of adding the inode.
+func NewValFileFromBasicVal(
+	ctx context.Context,
+	val valgo.BasicVal,
+	client *common.Client,
+) (*ValFile, error) {
+	log.Println("Create new val file named", val.Name, "from basic val")
+
+	// Create a val file and get a reference
+	valFile := &ValFile{
+		BasicData:  val,
+		client:     client,
+		ModifiedAt: time.Now(), // For now say that
+	}
+
+	// Return the val file as is now, it will get populated with extended val
+	// later as needed
+	return valFile, nil
+}
+
+// Add a new val file with prefetched extended val data. When a file handle is
+// requested the data is already present in the val file struct.
+func NewValFileFromExtendedVal(
+	val valgo.ExtendedVal,
+	client *common.Client,
+) (*ValFile, error) {
+	log.Println("Create new val file named", val.Name, "from extended val")
 
 	return &ValFile{
-		ValData:    val,
-		client:     client,
-		ModifiedAt: *modified,
+		ExtendedData: &val,
+		client:       client,
+		ModifiedAt:   *getValVersionCreatedAt(val, client),
 	}, nil
 }
 
 // A file handle that carries separate content for each open call
 type ValFileHandle struct {
 	ValFile *ValFile
-	client  *client.Client
+	client  *common.Client
 }
 
 // Update modified time to be now
@@ -69,7 +115,16 @@ func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 	fuseFlags uint32,
 	errno syscall.Errno,
 ) {
-	log.Println("Opening val file", f.ValData.Name)
+	if f.ExtendedData == nil {
+		log.Println("Valfile was lazy. Now getting extended val data for", f.BasicData.Name)
+		extVal, resp, err := f.client.APIClient.ValsAPI.ValsGet(ctx, f.BasicData.GetId()).Execute()
+		if err != nil || resp.StatusCode != http.StatusOK {
+			log.Println("Error fetching val", err)
+			return nil, 0, syscall.EIO
+		}
+		f.ExtendedData = extVal
+	}
+	log.Println("Opening val file", f.BasicData.Name)
 
 	// Create a new file handle for the val
 	fh = &ValFileHandle{
@@ -89,10 +144,14 @@ func (fh *ValFileHandle) Read(
 	dest []byte,
 	off int64,
 ) (fuse.ReadResult, syscall.Errno) {
-	log.Println("Reading val file", fh.ValFile.ValData.Name)
-
 	// Provide the Val's code as the data
-	valPackage := NewValPackage(fh.client, &fh.ValFile.ValData)
+	extVal, err := fh.ValFile.GetExtendedData(ctx)
+	if err != nil {
+		return nil, syscall.EIO
+	}
+	log.Println("Reading val file", extVal)
+
+	valPackage := NewValPackage(fh.client, extVal)
 	content, err := valPackage.ToText()
 	if err != nil {
 		return nil, syscall.EIO
@@ -116,48 +175,117 @@ func (c *ValFile) Write(
 	data []byte,
 	off int64,
 ) (written uint32, errno syscall.Errno) {
-	log.Println("Writing to val file", c.ValData.Name)
+	prevExtVal, err := c.GetExtendedData(ctx)
+	log.Println("Writing to val file", prevExtVal)
 
-	go func() {
-		// Commit the writes to val town API
-		log.Println("Commiting the write to", c.ValData.Name)
+	// Create new packed file contents
+	newValPackage := ValPackage{Val: prevExtVal}
+	if err != nil {
+		log.Println("Error updating val package", err)
+		return 0, syscall.EIO
+	}
+	newValPackage.UpdateVal(string(data))
+	extVal := newValPackage.Val
 
-		// Create new packed file contents
-		newValPackage := ValPackage{Val: &c.ValData}
-		err := newValPackage.UpdateVal(string(data))
-		if err != nil {
-			log.Println("Error updating val package", err)
-			return
-		}
-		log.Println("Successfully updated val package for", c.ValData.Name)
+	// The things the user can change in the yaml metadata
+	valCreateReqData := valgo.NewValsCreateRequest(newValPackage.Val.GetCode())
 
-		// The things the user can change in the yaml metadata
-		valCreateReqData := valgo.NewValsCreateRequest(newValPackage.Val.GetCode())
-		valCreateReqData.SetPrivacy(c.ValData.GetPrivacy())
-		valCreateReqData.SetReadme(c.ValData.GetReadme())
+	// Val town requires at least one character
+	if len(valCreateReqData.Code) == 0 {
+		valCreateReqData.Code = " "
+	}
 
-		// Make the request to update the val
-		valCreateReq := c.client.APIClient.ValsAPI.ValsCreateVersion(ctx, c.ValData.GetId()).ValsCreateRequest(*valCreateReqData)
-		extVal, resp, err := valCreateReq.Execute()
-		if err != nil || resp.StatusCode != http.StatusOK {
-			log.Println("Error updating val", err)
-		} else {
-			log.Println("Successfully updated val", c.ValData.Name)
-		}
+	valCreateReqData.SetPrivacy(prevExtVal.GetPrivacy())
+	valCreateReqData.SetReadme(prevExtVal.GetReadme())
+	log.Printf("New val data %v", valCreateReqData)
 
-		// Update the val to the new updated val
-		c.ValData = *extVal
-		c.NotifyContent(0, int64(len(data)))
-		c.ModifiedNow()
-		log.Println("Updated val file", c.ValData.Name)
-	}()
+	// Make the request to update the val
+	valCreateReq := c.client.APIClient.ValsAPI.ValsCreateVersion(ctx, prevExtVal.GetId()).ValsCreateRequest(*valCreateReqData)
+	_, resp, err := valCreateReq.Execute()
+	if err != nil || resp.StatusCode != http.StatusOK {
+		log.Println("Error updating val", err)
+		log.Println("Response", resp)
+		return 0, syscall.EIO
+	}
+	log.Println("Successfully updated val", prevExtVal.Name)
 
-	// We are writing all the new data but to prevent lag we want to say we wrote
-	// right away
-	c.NotifyContent(0, int64(len(data)))
+	// Because of a bug in val town we also need to "update" the val
+	valUpdateReqData := valgo.NewValsUpdateRequestWithDefaults()
+	valUpdateReqData.SetPrivacy(extVal.GetPrivacy())
+	valUpdateReqData.SetReadme(extVal.GetReadme())
+	log.Printf("New val data %v", valUpdateReqData)
+	resp, err = c.client.APIClient.ValsAPI.ValsUpdate(ctx, extVal.GetId()).ValsUpdateRequest(*valUpdateReqData).Execute()
+	if err != nil || resp.StatusCode != http.StatusNoContent {
+		log.Println("Error updating val", err)
+		log.Println("Response", resp)
+		return 0, syscall.EIO
+	}
+	log.Println("Updated val file", prevExtVal.Name)
+
+	// And finally, retreive the val's extended data again
+	extVal, resp, err = c.client.APIClient.ValsAPI.ValsGet(ctx, prevExtVal.GetId()).Execute()
+	if err != nil || resp.StatusCode != http.StatusOK {
+		log.Printf("Error fetching updated val data. error: %v, resp: %v", err, resp)
+	}
+	c.ExtendedData = extVal
+
+	c.ModifiedNow()
 	return uint32(len(data)), syscall.Errno(0)
 }
 
+// var _ = (fs.NodeRenamer)((*ValFile)(nil))
+//
+// // Rename a val, and change the name in valtown
+// func (c *ValFile) Rename(
+//
+//	ctx context.Context,
+//	name string,
+//	newParent fs.InodeEmbedder,
+//	newName string,
+//	flags uint32,
+//
+//	) syscall.Errno {
+//		// Cannot move vals between directories
+//		if newParent.EmbeddedInode().StableAttr().Ino != c.Inode.StableAttr().Ino {
+//			log.Printf("Cannot move val out of the `myvals` directory")
+//			return syscall.EINVAL
+//		}
+//
+//		// Ensure that the new filename is valid
+//		hopeless, valName, valType := GuessFilename(newName)
+//		if hopeless {
+//			return syscall.EINVAL
+//		}
+//
+//		// Rename the val
+//		valUpdateReq := valgo.NewValsUpdateRequest()
+//		valUpdateReq.SetName(*valName)
+//		valUpdateReq.SetType(string(*valType))
+//
+//		// Get the child so we can exrac the val id
+//		valId := c.GetChild(name).Operations().(*ValFile).BasicData.Id
+//
+//		// Update the val
+//		resp, err := c.client.APIClient.ValsAPI.ValsUpdate(ctx, valId).ValsUpdateRequest(*valUpdateReq).Execute()
+//		if err != nil || resp.StatusCode != http.StatusNoContent {
+//			log.Printf("Error updating val %s: %v", name, err)
+//			return syscall.EIO
+//		}
+//
+//		// Perform the rename
+//		newFilename := ConstructFilename(*valName, *valType)
+//		_, parent := c.Parent()
+//		parent.MvChild(name, newParent.EmbeddedInode(), newFilename, false)
+//
+//		// Fetch and update the new val post rename
+//		extVal, resp, err := c.client.APIClient.ValsAPI.ValsGet(ctx, c.ExtendedData.GetId()).Execute()
+//		if err != nil || resp.StatusCode != http.StatusOK {
+//			log.Println("Error fetching updated val data", err)
+//		}
+//		c.ExtendedData = extVal
+//
+//		return 0
+//	}
 var _ = (fs.NodeGetattrer)((*ValFile)(nil))
 
 // Make sure the file is always read/write/executable even if changed
@@ -166,11 +294,17 @@ func (f *ValFile) Getattr(
 	fh fs.FileHandle,
 	out *fuse.AttrOut,
 ) syscall.Errno {
-	log.Println("Getting attributes for val file", f.ValData.Name)
+	log.Println("Getting attributes for val file", f.BasicData.Name)
 
-	// Set the mode to indicate a regular file with read, write, and execute
-	// permissions for all
-	valPackage := NewValPackage(f.client, &f.ValData)
+	// Do not fetch extended data if we haven't already, just use placeholder!
+	if f.ExtendedData == nil {
+		out.Mode = ValFileFlags
+		modified := time.Unix(0, 0)
+		out.SetTimes(&modified, &modified, &modified)
+		return 0
+	}
+
+	valPackage := NewValPackage(f.client, f.ExtendedData)
 	contentLen, err := valPackage.Len()
 	if err != nil {
 		log.Println("Error getting content length", err)
@@ -178,13 +312,13 @@ func (f *ValFile) Getattr(
 	}
 
 	out.Size = uint64(contentLen)
-	out.Mode = ValFileMode
+	out.Mode = ValFileFlags
 
 	// Set timestamps to be modified now
 	modified := &f.ModifiedAt
 	out.SetTimes(modified, modified, modified)
 
-	log.Println("Got attributes for val file", f.ValData.Name)
+	log.Println("Got attributes for val file", f.BasicData.Name)
 	log.Println("Size:", out.Size, "Mode:", out.Mode, "Modified:", *modified)
 
 	return syscall.F_OK
@@ -200,10 +334,10 @@ func (f *ValFile) Setattr(
 	in *fuse.SetAttrIn,
 	out *fuse.AttrOut,
 ) syscall.Errno {
-	log.Println("Setting attributes for val file", f.ValData.Name)
+	log.Println("Setting attributes for val file", f.BasicData.Name)
 
 	out.Size = in.Size
-	out.Mode = ValFileMode
+	out.Mode = ValFileFlags
 	out.Atime = in.Atime
 	out.Mtime = in.Mtime
 	out.Ctime = in.Ctime

@@ -1,9 +1,13 @@
 {
+  "lock": false,
   "compilerOptions": {
     "noImplicitAny": false,
-    "allowSyntheticDefaultImports": true,
     "strict": false,
     "types": ["https://www.val.town/types/valtown.d.ts", "dom"]
   },
-  "lock": false
+  "lint": {
+    "rules": {
+      "exclude": ["no-explicit-any"]
+    }
+  }
 }

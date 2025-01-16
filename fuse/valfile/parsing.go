@@ -6,7 +6,7 @@ import (
 	"log"
 	"regexp"
 
-	client "github.com/404wolf/valfs/client"
+	common "github.com/404wolf/valfs/common"
 	"github.com/404wolf/valgo"
 	"github.com/goccy/go-yaml"
 	yamlcomment "github.com/zijiren233/yaml-comment"
@@ -14,7 +14,7 @@ import (
 
 type ValPackage struct {
 	Val    *valgo.ExtendedVal
-	client *client.Client
+	client *common.Client
 }
 
 type ValFrontmatterLinks struct {
@@ -48,8 +48,22 @@ func DeconstructVal(contents string) (
 	frontmatterMatch := frontmatterMatches[0]
 
 	// Extract the code
-	frontmatterEndIndex := frontmatterRe.FindStringIndex(contents)[1]
-	codeSection := contents[frontmatterEndIndex+4:]
+	if len(contents) < 4 {
+		return nil, nil, errors.New("No code found")
+	}
+	frontmatterFindIndex := frontmatterRe.FindStringIndex(contents)
+	if frontmatterFindIndex == nil {
+		return nil, nil, errors.New("Invalid frontmatter format")
+	}
+	frontmatterEndIndex := frontmatterFindIndex[1]
+
+	var offset int
+	if contents[frontmatterEndIndex+3] == '\n' {
+		offset = 4
+	} else {
+		offset = 3
+	}
+	codeSection := contents[frontmatterEndIndex+offset : len(contents)-1]
 
 	// Deserialize the frontmatter
 	meta = &ValFrontmatter{}
@@ -62,7 +76,7 @@ func DeconstructVal(contents string) (
 }
 
 // Create a new val package from a val
-func NewValPackage(client *client.Client, val *valgo.ExtendedVal) ValPackage {
+func NewValPackage(client *common.Client, val *valgo.ExtendedVal) ValPackage {
 	return ValPackage{Val: val, client: client}
 }
 
@@ -140,4 +154,31 @@ func (v *ValPackage) UpdateVal(contents string) error {
 
 	// Success
 	return nil
+}
+
+// Guess the file name that a user intended to name a val. Often this is what
+// they named it, but sometimes they make typos. If they choose an invalid val
+// type, then autocorrect it to the default (e.g. Script val). Only opinionated
+// when the user isn't exact!
+func GuessFilename(guess string) (
+	hopeless bool,
+	valName *string,
+	valType *ValType,
+) {
+	// Parse the filename of the val
+	valNameAttempt, valTypeAttempt := ExtractFromFilename(guess)
+
+	// Try to guess the type if it is unknown
+	if valTypeAttempt == Unknown {
+		re := regexp.MustCompile(`^([^\.]+\.?)+\.tsx?`)
+		if re.MatchString(guess) {
+			valName = &re.FindStringSubmatch(guess)[1]
+			valTypeRef := DefaultType
+			return false, valName, &valTypeRef
+		} else {
+			return true, nil, nil
+		}
+	} else {
+		return false, &valNameAttempt, &valTypeAttempt
+	}
 }

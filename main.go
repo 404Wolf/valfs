@@ -14,9 +14,9 @@ func loadEnvFile() error {
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
-	value := os.Getenv("VALTOWN_API_KEY")
+	value := os.Getenv("VAL_TOWN_API_KEY")
 	if value == "" {
-		fmt.Println("VALTOWN_API_KEY is not set")
+		fmt.Println("VAL_TOWN_API_KEY is not set")
 	}
 	return err
 }

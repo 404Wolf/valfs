@@ -3,7 +3,9 @@ package fuse
 import (
 	"context"
 	"log"
+	"os/exec"
 	"syscall"
+	"time"
 
 	_ "embed"
 
@@ -11,7 +13,7 @@ import (
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 
-	client "github.com/404wolf/valfs/client"
+	common "github.com/404wolf/valfs/common"
 	valfile "github.com/404wolf/valfs/fuse/valfile"
 	myvals "github.com/404wolf/valfs/fuse/valfs/myvals"
 )
@@ -20,11 +22,11 @@ import (
 type ValFS struct {
 	fs.Inode
 	MountDir string
-	client   *client.Client
+	client   *common.Client
 }
 
 // Create a new ValFS top level inode
-func NewValFS(mountDir string, client *client.Client) *ValFS {
+func NewValFS(mountDir string, client *common.Client) *ValFS {
 	return &ValFS{
 		MountDir: mountDir,
 		client:   client,
@@ -44,6 +46,17 @@ func (c *ValFS) Mount() error {
 			Debug: false,
 		},
 		OnAdd: func(ctx context.Context) {
+
+			ticker := time.NewTicker(5 * time.Second)
+			go func() {
+				for range ticker.C {
+					log.Printf("Caching Deno libraries")
+					cmd := exec.Command("deno", "cache", "--allow-import", "--allow-http", c.MountDir+"/myvals/*.tsx")
+					cmd.Start()
+					cmd.Process.Release()
+				}
+			}()
+
 			c.AddMyValsDir(ctx) // Add the folder with all the vals
 			c.AddDenoJSON(ctx)  // Add the deno.json file
 		},
@@ -64,7 +77,7 @@ func (c *ValFS) ValToValFile(
 	ctx context.Context,
 	val valgo.ExtendedVal,
 ) *valfile.ValFile {
-	valFile, err := valfile.NewValFile(val, c.client)
+	valFile, err := valfile.NewValFileFromExtendedVal(val, c.client)
 	if err != nil {
 		log.Fatal("Error creating val file", err)
 	}
