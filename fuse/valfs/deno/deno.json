@@ -1,4 +1,5 @@
 {
+  "$schema": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
   "lock": false,
   "compilerOptions": {
     "noImplicitAny": false,
@@ -9,5 +10,11 @@
     "rules": {
       "exclude": ["no-explicit-any"]
     }
+  },
+  "node_modules_dir": false,
+  "experimental": {
+    "unstable-node-globals": true,
+    "unstable-temporal": true,
+    "unstable-worker-options": true
   }
 }

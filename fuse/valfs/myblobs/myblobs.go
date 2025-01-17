@@ -79,8 +79,9 @@ func (c *MyBlobs) Unlink(ctx context.Context, name string) syscall.Errno {
 	if err != nil {
 		log.Printf("Error deleting blob %s: %v", *key, err)
 		return syscall.EIO
+	} else {
+		log.Printf("Deleted blob %s", *key)
 	}
-	log.Printf("Deleted blob %s", *key)
 
 	// Remove the blobFile from the map
 	uuid, ok := blobNameToKey.Load(name)
@@ -111,7 +112,7 @@ func (c *MyBlobs) Create(
 	content := []byte("{}")
 	tempFile, err := os.CreateTemp("", "valfs-blob-*")
 	if err != nil {
-		log.Printf("Failed to create temp file: %v", err)
+		common.ReportError("Failed to create temp file", err)
 		return nil, nil, 0, syscall.EIO
 	}
 	_, err = tempFile.Write(content)
@@ -127,10 +128,10 @@ func (c *MyBlobs) Create(
 		Body(tempFile).
 		Execute()
 	if err != nil {
-		log.Printf("API request failed: %v", err)
+		common.ReportError("Error creating blob", err)
 		return nil, nil, 0, syscall.EIO
 	} else if resp.StatusCode != http.StatusCreated {
-		log.Printf("Error creating blob: %v", resp)
+		common.ReportError("Error creating blob", err)
 		return nil, nil, 0, syscall.EIO
 	}
 	log.Printf("Created blob %v successfully", name)

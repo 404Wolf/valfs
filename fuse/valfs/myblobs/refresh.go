@@ -22,11 +22,11 @@ func refreshBlobs(
 	root *fs.Inode,
 	blobNameToKey *sync.Map,
 	client common.Client,
-) {
+) error {
 	newBlobs, err := getMyBlobs(ctx, client)
 	if err != nil {
-		log.Printf("Error fetching blobs: %v", err)
-		return
+		common.ReportError("Error fetching blobs", err)
+		return nil
 	}
 
 	log.Printf("Fetched %d blobs", len(newBlobs))
@@ -68,6 +68,8 @@ func refreshBlobs(
 			log.Printf("Removed blob %s no longer found on valtown", key)
 		}
 	}
+
+	return nil
 }
 
 // Get a list of all the blobs belonging to the authed user

@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"syscall"
 
@@ -45,19 +46,27 @@ func NewBlobFile(data valgo.BlobListingItem, client *common.Client) *BlobFile {
 func (f *BlobFile) getDataFile() (*os.File, error) {
 	tempFile, err := os.CreateTemp("", "valfs-blob-*")
 	if err != nil {
-		log.Printf("Failed to create temp file: %v", err)
+		common.ReportError("Failed to create temp file", err)
 		return nil, err
 	}
+
 	resp, err := f.client.APIClient.RawRequest("GET", "/v1/blob/"+f.BlobListing.Key, nil)
 	if err != nil {
-		log.Printf("Failed to fetch blob data: %v", err)
+		common.ReportError("Failed to fetch blob data", err)
 		return nil, err
 	}
+
 	bytesWritten, err := io.Copy(tempFile, resp.Body)
 	if err != nil {
-		log.Println("Error writing to blob file:", err)
+		common.ReportError("Error writing to blob file", err)
 		return nil, err
 	}
+	bytesWritten, err = io.Copy(tempFile, resp.Body)
+	if err != nil {
+		common.ReportError("Error writing to blob file", err)
+		return nil, err
+	}
+
 	log.Printf("Wrote %d bytes to blobfile at %s", bytesWritten, f.BlobListing.Key)
 	return tempFile, nil
 }
@@ -89,7 +98,7 @@ func (f *BlobFileHandle) Read(
 	buf []byte,
 	off int64,
 ) (res fuse.ReadResult, errno syscall.Errno) {
-	log.Printf("opening up %s", f.File.Name())
+	log.Printf("Opening up %s", f.File.Name())
 	r := fuse.ReadResultFd(uintptr(f.File.Fd()), off, len(buf))
 	return r, syscall.F_OK
 }
@@ -108,8 +117,37 @@ func (f *BlobFile) Getattr(
 	out.SetTimes(&modified, &modified, &modified)
 
 	log.Println("Size:", out.Size, "Mode:", out.Mode, "Modified:", modified)
-
 	return syscall.F_OK
+}
+
+var _ = (fs.NodeWriter)((*BlobFile)(nil))
+
+// Write data to a val file and the corresponding val
+func (c *BlobFile) Write(
+	ctx context.Context,
+	uncastFh fs.FileHandle,
+	data []byte,
+	off int64,
+) (written uint32, errno syscall.Errno) {
+	fh := uncastFh.(*BlobFileHandle)
+	log.Println("Writing to blob file", fh.File.Name())
+
+	// Write to the temp file
+	wrote, err := fh.File.WriteAt(data, off)
+	if err != nil {
+		return 0, syscall.EIO
+	}
+	// Post the new data
+	resp, err := c.client.APIClient.BlobsAPI.BlobsStore(ctx, c.BlobListing.Key).Body(c.File).Execute()
+	if err != nil {
+		common.ReportError("Failed to write to blob file", err)
+		return 0, syscall.EIO
+	} else if resp.StatusCode != http.StatusCreated {
+		common.ReportErrorResp("Failed to write to blob file, unexpected status code: %d", resp, resp.StatusCode)
+		return 0, syscall.EIO
+	}
+
+	return uint32(wrote), syscall.F_OK
 }
 
 var _ = (fs.NodeSetattrer)((*BlobFile)(nil))

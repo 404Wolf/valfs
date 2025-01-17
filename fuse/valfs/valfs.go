@@ -3,7 +3,9 @@ package fuse
 import (
 	"context"
 	"log"
+	"os"
 	"os/exec"
+	"os/signal"
 	"syscall"
 	"time"
 
@@ -80,7 +82,28 @@ func (c *ValFS) Mount() error {
 		return err
 	}
 
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-signalChan
+		log.Println("Received interrupt signal. Unmounting...")
+		err := server.Unmount()
+		if err != nil {
+			log.Printf("Error unmounting: %v", err)
+		}
+		os.Exit(1)
+	}()
+
+	defer func() {
+		log.Printf("Unmounting %s", c.MountDir)
+		err := server.Unmount()
+		if err != nil {
+			log.Printf("Error unmounting: %v", err)
+		}
+	}()
 	log.Printf("Unmount by calling 'umount %s'\n", c.MountDir)
+
 	server.Wait()
 	return nil
 }

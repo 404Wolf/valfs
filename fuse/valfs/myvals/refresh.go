@@ -15,18 +15,17 @@ import (
 var previousValIds = make(map[string]*valfile.ValFile)
 
 // Refresh the list of vals in the filesystem
-func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) {
+func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) error {
 	newVals, err := getMyVals(ctx, client)
 	newValsIdsToBasicVals := make(map[string]valgo.BasicVal)
 	for _, newVal := range newVals {
 		newValsIdsToBasicVals[newVal.GetId()] = newVal
 	}
-
 	log.Printf("Fetched %d vals", len(newVals))
 
 	if err != nil {
-		log.Printf(err.Error())
-		return
+		common.ReportError("Error fetching vals", err)
+		return err
 	}
 
 	for _, newVal := range newVals {
@@ -35,13 +34,13 @@ func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) {
 		if !exists {
 			valFile, err := valfile.NewValFileFromBasicVal(ctx, newVal, &client)
 			if err != nil {
-				log.Fatal("Error creating val file", err)
+				common.ReportError("Error creating val file", err)
+				return err
 			}
 			filename := valfile.ConstructFilename(newVal.GetName(), valfile.ValType(newVal.GetType()))
 			root.NewPersistentInode(ctx, valFile, fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
 			root.AddChild(filename, &valFile.Inode, true)
 			previousValIds[newVal.GetId()] = valFile
-
 			log.Printf("Added val %s, found fresh on valtown", newVal.GetId())
 		}
 
@@ -63,6 +62,8 @@ func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) {
 			log.Printf("Removed val %s no longer found on valtown", oldVal.BasicData.GetId())
 		}
 	}
+
+	return nil
 }
 
 const lookupCap = 99

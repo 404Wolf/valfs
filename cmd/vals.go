@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	common "github.com/404wolf/valfs/common"
 	"github.com/404wolf/valgo"
 	"github.com/spf13/cobra"
 )
@@ -47,7 +48,7 @@ var listValsCommand = &cobra.Command{
 		}
 
 		if httpRes.StatusCode != 200 {
-			log.Fatalf("Failed to list vals for user %s: %d", userId, httpRes.StatusCode)
+			panic(common.ReportErrorResp("Failed to list vals for user %s", httpRes))
 		}
 
 		for _, val := range resp.Data {

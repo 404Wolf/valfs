@@ -3,7 +3,6 @@ package fuse
 import (
 	"errors"
 	"fmt"
-	"log"
 	"regexp"
 
 	common "github.com/404wolf/valfs/common"
@@ -143,7 +142,7 @@ func (v *ValPackage) Len() (int, error) {
 func (v *ValPackage) UpdateVal(contents string) error {
 	code, frontmatter, err := DeconstructVal(contents)
 	if err != nil {
-		log.Println(err)
+		common.ReportError("Error deconstructing val", err)
 		return err
 	}
 

@@ -48,7 +48,7 @@ func getValVersionCreatedAt(val valgo.ExtendedVal, client *common.Client) *time.
 		versionList, resp, err := client.APIClient.ValsAPI.ValsList(ctx,
 			val.Id).Offset(0).Limit(1).Execute()
 		if err != nil || resp.StatusCode != http.StatusOK {
-			log.Println("Error fetching version list", err)
+			common.ReportErrorResp("Error fetching version list", resp, err)
 		}
 		modified = &versionList.Data[0].CreatedAt
 	}
@@ -230,7 +230,7 @@ func (c *ValFile) Write(
 	c.ExtendedData = extVal
 
 	c.ModifiedNow()
-	return uint32(len(data)), syscall.Errno(0)
+	return uint32(len(data)), syscall.F_OK
 }
 
 var _ = (fs.NodeGetattrer)((*ValFile)(nil))

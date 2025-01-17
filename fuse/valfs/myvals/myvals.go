@@ -64,7 +64,7 @@ func (c *MyVals) Unlink(ctx context.Context, name string) syscall.Errno {
 
 	_, err := c.client.APIClient.ValsAPI.ValsDelete(ctx, valFile.BasicData.Id).Execute()
 	if err != nil {
-		log.Printf("Error deleting val %s: %v", valFile.BasicData.Id, err)
+		common.ReportError("Error deleting val", err)
 		return syscall.EIO
 	}
 	log.Printf("Deleted val %s", valFile.BasicData.Id)
@@ -98,20 +98,20 @@ func (c *MyVals) Create(
 
 	// Check if the request was successful
 	if err != nil {
-		log.Printf("Error creating val: %v", err)
+		common.ReportError("Error creating val", err)
 		return nil, nil, 0, syscall.EIO
-	} else if resp.StatusCode != 201 {
-		log.Printf("Error creating val: %v", resp)
+	} else if resp.StatusCode != http.StatusCreated {
+		common.ReportErrorResp("Error creating val", resp)
 		return nil, nil, 0, syscall.EIO
 	} else {
 		log.Printf("Created val %v", val)
 	}
-	log.Printf("Created val %s", val.Id)
 
 	// Create a val file that we can hand over
 	valFile, err := valfile.NewValFileFromExtendedVal(*val, c.client)
 	if err != nil {
-		log.Fatal("Error creating val file", err)
+		common.ReportError("Error creating val file", err)
+		return nil, nil, 0, syscall.EIO
 	}
 	newInode := c.NewPersistentInode(
 		ctx,
@@ -171,14 +171,17 @@ func (c *MyVals) Rename(
 		return syscall.EIO
 	}
 
-	// Perform the rename in the filesystem. Change the input
-
 	// Fetch what the change produced
 	extVal, resp, err := c.client.APIClient.ValsAPI.ValsGet(ctx, valFile.BasicData.Id).Execute()
-	if err != nil || resp.StatusCode != http.StatusOK {
-		log.Printf("Error fetching val. Err %v: Resp: %v", err, resp)
+	if err != nil {
+		common.ReportError("Error fetching val", err)
+		return syscall.EIO
+	} else if resp.StatusCode != http.StatusOK {
+		common.ReportErrorResp("Error fetching val", resp)
 		return syscall.EIO
 	}
+
+	// Update the val file with the new data
 	valFile.ExtendedData = extVal
 	valFile.BasicData.Name = valName
 	valFile.BasicData.Type = string(valType)
