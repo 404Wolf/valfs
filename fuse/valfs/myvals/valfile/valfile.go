@@ -14,7 +14,7 @@ import (
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
 
-const ValFileFlags = syscall.S_IFREG | 0o777
+const VAL_FILE_FLAGS = syscall.S_IFREG | 0o777
 
 // A file in the val file system, with metadata about the file and an inode
 type ValFile struct {
@@ -233,59 +233,6 @@ func (c *ValFile) Write(
 	return uint32(len(data)), syscall.Errno(0)
 }
 
-// var _ = (fs.NodeRenamer)((*ValFile)(nil))
-//
-// // Rename a val, and change the name in valtown
-// func (c *ValFile) Rename(
-//
-//	ctx context.Context,
-//	name string,
-//	newParent fs.InodeEmbedder,
-//	newName string,
-//	flags uint32,
-//
-//	) syscall.Errno {
-//		// Cannot move vals between directories
-//		if newParent.EmbeddedInode().StableAttr().Ino != c.Inode.StableAttr().Ino {
-//			log.Printf("Cannot move val out of the `myvals` directory")
-//			return syscall.EINVAL
-//		}
-//
-//		// Ensure that the new filename is valid
-//		hopeless, valName, valType := GuessFilename(newName)
-//		if hopeless {
-//			return syscall.EINVAL
-//		}
-//
-//		// Rename the val
-//		valUpdateReq := valgo.NewValsUpdateRequest()
-//		valUpdateReq.SetName(*valName)
-//		valUpdateReq.SetType(string(*valType))
-//
-//		// Get the child so we can exrac the val id
-//		valId := c.GetChild(name).Operations().(*ValFile).BasicData.Id
-//
-//		// Update the val
-//		resp, err := c.client.APIClient.ValsAPI.ValsUpdate(ctx, valId).ValsUpdateRequest(*valUpdateReq).Execute()
-//		if err != nil || resp.StatusCode != http.StatusNoContent {
-//			log.Printf("Error updating val %s: %v", name, err)
-//			return syscall.EIO
-//		}
-//
-//		// Perform the rename
-//		newFilename := ConstructFilename(*valName, *valType)
-//		_, parent := c.Parent()
-//		parent.MvChild(name, newParent.EmbeddedInode(), newFilename, false)
-//
-//		// Fetch and update the new val post rename
-//		extVal, resp, err := c.client.APIClient.ValsAPI.ValsGet(ctx, c.ExtendedData.GetId()).Execute()
-//		if err != nil || resp.StatusCode != http.StatusOK {
-//			log.Println("Error fetching updated val data", err)
-//		}
-//		c.ExtendedData = extVal
-//
-//		return 0
-//	}
 var _ = (fs.NodeGetattrer)((*ValFile)(nil))
 
 // Make sure the file is always read/write/executable even if changed
@@ -298,7 +245,7 @@ func (f *ValFile) Getattr(
 
 	// Do not fetch extended data if we haven't already, just use placeholder!
 	if f.ExtendedData == nil {
-		out.Mode = ValFileFlags
+		out.Mode = VAL_FILE_FLAGS
 		modified := time.Unix(0, 0)
 		out.SetTimes(&modified, &modified, &modified)
 		return 0
@@ -312,7 +259,7 @@ func (f *ValFile) Getattr(
 	}
 
 	out.Size = uint64(contentLen)
-	out.Mode = ValFileFlags
+	out.Mode = VAL_FILE_FLAGS
 
 	// Set timestamps to be modified now
 	modified := &f.ModifiedAt
@@ -337,7 +284,7 @@ func (f *ValFile) Setattr(
 	log.Println("Setting attributes for val file", f.BasicData.Name)
 
 	out.Size = in.Size
-	out.Mode = ValFileFlags
+	out.Mode = VAL_FILE_FLAGS
 	out.Atime = in.Atime
 	out.Mtime = in.Mtime
 	out.Ctime = in.Ctime

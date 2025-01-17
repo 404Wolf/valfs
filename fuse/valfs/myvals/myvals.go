@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"net/http"
-	"regexp"
 	"syscall"
 	"time"
 
@@ -15,8 +14,10 @@ import (
 	"github.com/hanwen/go-fuse/v2/fuse"
 
 	common "github.com/404wolf/valfs/common"
-	valfile "github.com/404wolf/valfs/fuse/valfile"
+	valfile "github.com/404wolf/valfs/fuse/valfs/myvals/valfile"
 )
+
+const VAL_REFRESH_INTERVAL = 5
 
 // The folder with all of my vals in it
 type MyVals struct {
@@ -30,11 +31,11 @@ func NewMyVals(parent *fs.Inode, client *common.Client, ctx context.Context) *My
 	myValsDir := &MyVals{
 		client: client,
 	}
-	attrs := fs.StableAttr{Mode: syscall.S_IFDIR}
+	attrs := fs.StableAttr{Mode: syscall.S_IFDIR | 0555}
 	parent.NewPersistentInode(ctx, myValsDir, attrs)
 
 	refreshVals(ctx, &myValsDir.Inode, *client)
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(VAL_REFRESH_INTERVAL * time.Second)
 	go func() {
 		for range ticker.C {
 			refreshVals(ctx, &myValsDir.Inode, *client)
@@ -73,25 +74,6 @@ func (c *MyVals) Unlink(ctx context.Context, name string) syscall.Errno {
 
 var _ = (fs.NodeCreater)((*MyVals)(nil))
 
-func guessFilename(guess string) (hopeless bool, valName *string, valType *valfile.ValType) {
-	// Parse the filename of the val
-	valNameAttempt, valTypeAttempt := valfile.ExtractFromFilename(guess)
-
-	// Try to guess the type if it is unknown
-	if valTypeAttempt == valfile.Unknown {
-		re := regexp.MustCompile(`^([^\.]+\.?)+\.tsx?`)
-		if re.MatchString(guess) {
-			valName = &re.FindStringSubmatch(guess)[1]
-			valTypeRef := valfile.DefaultType
-			return false, valName, &valTypeRef
-		} else {
-			return true, nil, nil
-		}
-	} else {
-		return false, &valNameAttempt, &valTypeAttempt
-	}
-}
-
 // Create a new val on new file creation
 func (c *MyVals) Create(
 	ctx context.Context,
@@ -100,17 +82,17 @@ func (c *MyVals) Create(
 	mode uint32,
 	entryOut *fuse.EntryOut,
 ) (inode *fs.Inode, fh fs.FileHandle, fuseFlags uint32, code syscall.Errno) {
-	hopeless, valName, valType := guessFilename(name)
-	if hopeless {
+	valName, valType := valfile.ExtractFromFilename(name)
+	if valType == valfile.Unknown {
 		return nil, nil, 0, syscall.EINVAL
 	}
-	log.Printf("Creating val %s of type %s", *valName, *valType)
+	log.Printf("Creating val %s of type %s", valName, valType)
 
 	// Make a request to create the val
-	templateCode := valfile.GetTemplate(*valType)
+	templateCode := valfile.GetTemplate(valType)
 	createReq := valgo.NewValsCreateRequest(string(templateCode))
-	createReq.SetName(*valName)
-	createReq.SetType(string(*valType))
+	createReq.SetName(valName)
+	createReq.SetType(string(valType))
 	createReq.SetPrivacy(valfile.DefaultPrivacy)
 	val, resp, err := c.client.APIClient.ValsAPI.ValsCreate(ctx).ValsCreateRequest(*createReq).Execute()
 
@@ -202,43 +184,4 @@ func (c *MyVals) Rename(
 	valFile.BasicData.Type = string(valType)
 
 	return syscall.F_OK
-}
-
-var _ = (fs.NodeReaddirer)((*MyVals)(nil))
-
-// List the contents of the directory
-func (c *MyVals) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
-	log.Printf("Listing %d val files", len(c.Children()))
-
-	entries := []fuse.DirEntry{}
-	for _, valFileInode := range c.Children() {
-		valFile := valFileInode.Operations().(*valfile.ValFile)
-		filename := valfile.ConstructFilename(valFile.BasicData.Name, valfile.ValType(valFile.BasicData.Type))
-
-		entries = append(entries, fuse.DirEntry{
-			Mode: syscall.S_IFREG,
-			Name: filename,
-			Ino:  valFile.Inode.StableAttr().Ino,
-			Off:  0,
-		})
-	}
-
-	return fs.NewListDirStream(entries), 0
-}
-
-var _ = (fs.NodeLookuper)((*MyVals)(nil))
-
-// Fetch an inode
-func (c *MyVals) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	child := c.GetChild(name)
-	if child == nil {
-		return nil, syscall.ENOENT
-	}
-
-	valFile, ok := child.Operations().(*valfile.ValFile)
-	if !ok {
-		return nil, syscall.EINVAL
-	}
-
-	return &valFile.Inode, 0
 }

@@ -7,7 +7,7 @@ import (
 	"syscall"
 
 	common "github.com/404wolf/valfs/common"
-	valfile "github.com/404wolf/valfs/fuse/valfile"
+	valfile "github.com/404wolf/valfs/fuse/valfs/myvals/valfile"
 	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 )
@@ -15,13 +15,7 @@ import (
 var previousValIds = make(map[string]*valfile.ValFile)
 
 // Refresh the list of vals in the filesystem
-func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) (
-	created []*valfile.ValFile,
-	removed []*valfile.ValFile,
-) {
-	created = make([]*valfile.ValFile, 0)
-	removed = make([]*valfile.ValFile, 0)
-
+func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) {
 	newVals, err := getMyVals(ctx, client)
 	newValsIdsToBasicVals := make(map[string]valgo.BasicVal)
 	for _, newVal := range newVals {
@@ -32,7 +26,7 @@ func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) (
 
 	if err != nil {
 		log.Printf(err.Error())
-		return created, removed
+		return
 	}
 
 	for _, newVal := range newVals {
@@ -47,7 +41,6 @@ func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) (
 			root.NewPersistentInode(ctx, valFile, fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
 			root.AddChild(filename, &valFile.Inode, true)
 			previousValIds[newVal.GetId()] = valFile
-			created = append(created, valFile)
 
 			log.Printf("Added val %s, found fresh on valtown", newVal.GetId())
 		}
@@ -65,15 +58,11 @@ func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) (
 	for _, oldVal := range previousValIds {
 		if _, exists := newValsIdsToBasicVals[oldVal.BasicData.GetId()]; !exists {
 			filename := valfile.ConstructFilename(oldVal.BasicData.GetName(), valfile.ValType(oldVal.BasicData.GetType()))
-			removedValFile, _ := interface{}(root.GetChild(filename).EmbeddedInode()).(*valfile.ValFile)
-			removed = append(removed, removedValFile)
 			root.RmChild(filename)
 			delete(previousValIds, oldVal.BasicData.GetId())
 			log.Printf("Removed val %s no longer found on valtown", oldVal.BasicData.GetId())
 		}
 	}
-
-	return created, removed
 }
 
 const lookupCap = 99

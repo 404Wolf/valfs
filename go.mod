@@ -8,6 +8,7 @@ require (
 	github.com/hanwen/go-fuse/v2 v2.7.2
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.8.1
+	github.com/subosito/gozaru v0.0.0-20190625071150-416082cce636
 	github.com/zijiren233/yaml-comment v0.2.2
 )
 

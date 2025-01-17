@@ -1,7 +1,7 @@
 package fuse
 
 import (
-	valfile "github.com/404wolf/valfs/fuse/valfile"
+	valfile "github.com/404wolf/valfs/fuse/valfs/myvals/valfile"
 	"regexp"
 )
 

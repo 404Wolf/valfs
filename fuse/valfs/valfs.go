@@ -7,15 +7,15 @@ import (
 	"syscall"
 	"time"
 
-	_ "embed"
-
 	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 
 	common "github.com/404wolf/valfs/common"
-	valfile "github.com/404wolf/valfs/fuse/valfile"
+	deno "github.com/404wolf/valfs/fuse/valfs/deno"
+	blobs "github.com/404wolf/valfs/fuse/valfs/myblobs"
 	myvals "github.com/404wolf/valfs/fuse/valfs/myvals"
+	valfile "github.com/404wolf/valfs/fuse/valfs/myvals/valfile"
 )
 
 // Top level inode of a val file system
@@ -38,6 +38,18 @@ func (c *ValFS) AddMyValsDir(ctx context.Context) {
 	c.AddChild("myvals", &myValsDir.Inode, true)
 }
 
+func (c *ValFS) AddBlobsDir(ctx context.Context) {
+	myValsDir := blobs.NewBlobs(&c.Inode, c.client, ctx)
+	c.AddChild("myblobs", &myValsDir.Inode, true)
+}
+
+// Add the deno.json file which provides the user context about how to run and
+// edit their vals
+func (c *ValFS) AddDenoJSON(ctx context.Context) {
+	denoJsonInode := deno.NewDenoJson(&c.Inode, c.client, ctx)
+	c.AddChild("deno.json", denoJsonInode, false)
+}
+
 // Mount the filesystem
 func (c *ValFS) Mount() error {
 	log.Printf("Mounting ValFS file system at %s", c.MountDir)
@@ -46,7 +58,6 @@ func (c *ValFS) Mount() error {
 			Debug: false,
 		},
 		OnAdd: func(ctx context.Context) {
-
 			ticker := time.NewTicker(5 * time.Second)
 			go func() {
 				for range ticker.C {
@@ -58,6 +69,7 @@ func (c *ValFS) Mount() error {
 			}()
 
 			c.AddMyValsDir(ctx) // Add the folder with all the vals
+			c.AddBlobsDir(ctx)  // Add the folder with all the blobs
 			c.AddDenoJSON(ctx)  // Add the deno.json file
 		},
 	})

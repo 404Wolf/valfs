@@ -81,3 +81,6 @@ Add options for:
   `deno run --lock=path/to/the-real-lock.lock script.X.tsx` and have val town
   generate the lock file (with HTTP val wrapper + `Deno.readTextFile()` on
   lockfile)
+
+## Blobs
+- Blobs work using loopback with temp files. I want to automatically clean the temp files on exit
