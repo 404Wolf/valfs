@@ -246,6 +246,9 @@ func (f *ValFile) Getattr(
 	// Do not fetch extended data if we haven't already, just use placeholder!
 	if f.ExtendedData == nil {
 		out.Mode = VAL_FILE_FLAGS
+		// The size of the actual code, plus a bit extra
+		// TODO: Figure out what the actual maximum amount of "extra" is
+		out.Size = uint64(len(f.BasicData.GetCode()) + 500)
 		modified := time.Unix(0, 0)
 		out.SetTimes(&modified, &modified, &modified)
 		return 0

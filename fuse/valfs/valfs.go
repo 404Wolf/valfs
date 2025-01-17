@@ -62,7 +62,8 @@ func (c *ValFS) Mount() error {
 			go func() {
 				for range ticker.C {
 					log.Printf("Caching Deno libraries")
-					cmd := exec.Command("deno", "cache", "--allow-import", "--allow-http", c.MountDir+"/myvals/*.tsx")
+					log.Print("Executing deno cache --allow-import " + c.MountDir + "/myvals")
+					cmd := exec.Command("deno", "cache", "--allow-import", c.MountDir+"/myvals")
 					cmd.Start()
 					cmd.Process.Release()
 				}
