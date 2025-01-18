@@ -2,37 +2,39 @@ package fuse
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"math/rand"
 	"net/http"
 	"os"
 	"syscall"
+	"time"
 
-	common "github.com/404wolf/valfs/common"
+	"github.com/404wolf/valfs/common"
 	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
 
-const BLOB_FILE_FLAGS = syscall.S_IFREG | 0o666
+const BlobFileFlags = syscall.S_IFREG | 0o666
 
-// A file in the with metadata about the file and an inode
 type BlobFile struct {
 	fs.Inode
-
 	BlobListing valgo.BlobListingItem
-	File        *os.File
 	UUID        uint64
 	client      *common.Client
 }
 
-// The file handle for a blob file
 type BlobFileHandle struct {
 	File *os.File
 }
 
-// Create a new blob file
+var _ = (fs.NodeOpener)((*BlobFile)(nil))
+var _ = (fs.NodeWriter)((*BlobFile)(nil))
+var _ = (fs.NodeSetattrer)((*BlobFile)(nil))
+
+// NewBlobFile creates a new BlobFile instance
 func NewBlobFile(data valgo.BlobListingItem, client *common.Client) *BlobFile {
 	return &BlobFile{
 		BlobListing: data,
@@ -41,132 +43,128 @@ func NewBlobFile(data valgo.BlobListingItem, client *common.Client) *BlobFile {
 	}
 }
 
-// Fetch the data stored under the blob, and stream it to a tempfile. Then
-// return the file descriptor for the tempfile for use as a loopback.
-func (f *BlobFile) getDataFile() (*os.File, error) {
-	tempFile, err := os.CreateTemp("", "valfs-blob-*")
-	if err != nil {
-		common.ReportError("Failed to create temp file", err)
-		return nil, err
-	}
-
-	resp, err := f.client.APIClient.RawRequest("GET", "/v1/blob/"+f.BlobListing.Key, nil)
-	if err != nil {
-		common.ReportError("Failed to fetch blob data", err)
-		return nil, err
-	}
-
-	bytesWritten, err := io.Copy(tempFile, resp.Body)
-	if err != nil {
-		common.ReportError("Error writing to blob file", err)
-		return nil, err
-	}
-	bytesWritten, err = io.Copy(tempFile, resp.Body)
-	if err != nil {
-		common.ReportError("Error writing to blob file", err)
-		return nil, err
-	}
-
-	log.Printf("Wrote %d bytes to blobfile at %s", bytesWritten, f.BlobListing.Key)
-	return tempFile, nil
+// getTempFilePath returns the path for the temporary file
+func (f *BlobFile) getTempFilePath() string {
+	return fmt.Sprintf("/tmp/valfs-blob-%d", f.UUID)
 }
 
-var _ = (fs.NodeOpener)((*BlobFile)(nil))
+// Open opens the blob file and fetches its content
+func (f *BlobFile) Open(
+	ctx context.Context,
+	openFlags uint32,
+) (fs.FileHandle, uint32, syscall.Errno) {
+	log.Printf("Opening blob file %s", f.BlobListing.Key)
 
-// Get a file descriptor for a blob file
-func (f *BlobFile) Open(ctx context.Context, openFlags uint32) (
-	fh fs.FileHandle,
-	fuseFlags uint32,
-	errno syscall.Errno,
-) {
-	log.Println("Opening blob file", f.BlobListing.Key)
+	tempFilePath := f.getTempFilePath()
+	_, err := os.Stat(tempFilePath)
+	fileExisted := os.IsNotExist(err)
 
-	file, err := f.getDataFile()
+	// Create if not exists (because of the O_CREATE flag)
+	file, err := os.OpenFile(tempFilePath, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
+		common.ReportError("Failed to open temporary file", err)
 		return nil, 0, syscall.EIO
 	}
-	f.File = file
-	fh = &BlobFileHandle{File: f.File}
 
-	// Return FOPEN_DIRECT_IO so content is not cached
-	return fh, fuse.FOPEN_DIRECT_IO, syscall.F_OK
+
+  // If the file didn't exist before that means we'll need to fetch its
+  // contents
+	if !fileExisted {
+		resp, err := f.client.APIClient.RawRequest("GET", "/v1/blob/"+f.BlobListing.Key, nil)
+		if err != nil {
+			common.ReportError("Failed to fetch blob content", err)
+			file.Close()
+			return nil, 0, syscall.EIO
+		}
+		defer resp.Body.Close()
+
+		_, err = io.Copy(file, resp.Body)
+		if err != nil {
+			common.ReportError("Failed to copy blob content to file", err)
+			file.Close()
+			return nil, 0, syscall.EIO
+		}
+	}
+
+	return &BlobFileHandle{File: file}, fuse.O_ANYWRITE, syscall.F_OK
 }
 
-// Read from the blob file by accessing the underlying temp file file descriptor
+// Read reads data from the blob file
 func (f *BlobFileHandle) Read(
 	ctx context.Context,
 	buf []byte,
 	off int64,
-) (res fuse.ReadResult, errno syscall.Errno) {
-	log.Printf("Opening up %s", f.File.Name())
-	r := fuse.ReadResultFd(uintptr(f.File.Fd()), off, len(buf))
-	return r, syscall.F_OK
+) (fuse.ReadResult, syscall.Errno) {
+	return fuse.ReadResultFd(uintptr(f.File.Fd()), off, len(buf)), syscall.F_OK
 }
 
-// Make sure the file is always read/write/executable even if changed
-func (f *BlobFile) Getattr(
-	ctx context.Context,
-	fh fs.FileHandle,
-	out *fuse.AttrOut,
-) syscall.Errno {
-	log.Println("Getting attributes for blob", f.BlobListing.Key)
-
-	out.Mode = BLOB_FILE_FLAGS
+// Getattr retrieves the attributes of the blob file
+func (f *BlobFile) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+	out.Mode = BlobFileFlags
 	out.Size = uint64(*f.BlobListing.Size)
 	modified := f.BlobListing.GetLastModified()
 	out.SetTimes(&modified, &modified, &modified)
-
-	log.Println("Size:", out.Size, "Mode:", out.Mode, "Modified:", modified)
 	return syscall.F_OK
 }
 
-var _ = (fs.NodeWriter)((*BlobFile)(nil))
-
-// Write data to a val file and the corresponding val
+// Write writes data to the blob file and updates the corresponding blob
 func (c *BlobFile) Write(
 	ctx context.Context,
-	uncastFh fs.FileHandle,
+	fh fs.FileHandle,
 	data []byte,
 	off int64,
-) (written uint32, errno syscall.Errno) {
-	fh := uncastFh.(*BlobFileHandle)
-	log.Println("Writing to blob file", fh.File.Name())
+) (uint32, syscall.Errno) {
+	bfh := fh.(*BlobFileHandle)
 
-	// Write to the temp file
-	wrote, err := fh.File.WriteAt(data, off)
+	// Write to the temp file at the specified offset
+	wrote, err := bfh.File.WriteAt(data, off)
 	if err != nil {
+		common.ReportError("Failed to write to temporary file", err)
 		return 0, syscall.EIO
 	}
-	// Post the new data
-	resp, err := c.client.APIClient.BlobsAPI.BlobsStore(ctx, c.BlobListing.Key).Body(c.File).Execute()
+
+	// Get the current file size
+	fileInfo, err := bfh.File.Stat()
 	if err != nil {
-		common.ReportError("Failed to write to blob file", err)
-		return 0, syscall.EIO
-	} else if resp.StatusCode != http.StatusCreated {
-		common.ReportErrorResp("Failed to write to blob file, unexpected status code: %d", resp, resp.StatusCode)
+		common.ReportError("Failed to stat temporary file", err)
 		return 0, syscall.EIO
 	}
+	fileSize := fileInfo.Size()
+
+	// Update the size in the BlobListing
+	int32Size := int32(fileSize)
+	c.BlobListing.Size = &int32Size
+
+	// Seek to the start of the file
+	if _, err := bfh.File.Seek(0, 0); err != nil {
+		common.ReportError("Failed to seek to start of file", err)
+		return 0, syscall.EIO
+	}
+
+	// Upload the entire file
+	_, err = c.client.APIClient.RawRequest(http.MethodPost, "/v1/blob/"+c.BlobListing.Key, bfh.File)
+	if err != nil {
+		common.ReportError("Failed to upload blob content", err)
+		return 0, syscall.EIO
+	}
+
+	// Update the last modified time (this might not be the same as we would see
+	// with the API, but it makes editors happy)
+	c.BlobListing.SetLastModified(time.Now())
 
 	return uint32(wrote), syscall.F_OK
 }
 
-var _ = (fs.NodeSetattrer)((*BlobFile)(nil))
-
-// Accept the request to change attrs, but ignore the new attrs, to comply with
-// editors expecting to be able to change them
+// Setattr sets the attributes of the blob file
 func (f *BlobFile) Setattr(
 	ctx context.Context,
 	fh fs.FileHandle,
 	in *fuse.SetAttrIn,
 	out *fuse.AttrOut,
 ) syscall.Errno {
-	log.Println("Setting attributes for blob", f.BlobListing.Key)
-
 	out.Size = in.Size
-	out.Mode = BLOB_FILE_FLAGS
-	out.Atime = in.Atime
-	out.Mtime = in.Mtime
-	out.Ctime = in.Ctime
-
+	out.Mode = BlobFileFlags
+	modified := f.BlobListing.GetLastModified()
+	out.SetTimes(&modified, &modified, &modified)
 	return syscall.F_OK
 }

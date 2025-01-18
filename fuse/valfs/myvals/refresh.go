@@ -3,7 +3,6 @@ package fuse
 import (
 	"context"
 	"log"
-	"net/http"
 	"syscall"
 
 	common "github.com/404wolf/valfs/common"
@@ -73,8 +72,8 @@ func getMyVals(ctx context.Context, client common.Client) ([]valgo.BasicVal, err
 	log.Println("Fetching all of my vals")
 
 	// Fetch my ID
-	meResp, httpResp, err := client.APIClient.MeAPI.MeGet(context.Background()).Execute()
-	if err != nil || httpResp.StatusCode != http.StatusOK {
+	meResp, _, err := client.APIClient.MeAPI.MeGet(context.Background()).Execute()
+	if err != nil {
 		log.Printf(err.Error())
 		return nil, err
 	}
@@ -84,8 +83,8 @@ func getMyVals(ctx context.Context, client common.Client) ([]valgo.BasicVal, err
 	allVals := []valgo.BasicVal{}
 	for {
 		// Request the next batch of vals
-		vals, resp, err := client.APIClient.UsersAPI.UsersVals(ctx, meResp.GetId()).Offset(int32(offset)).Limit(99).Execute()
-		if err != nil || resp.StatusCode != http.StatusOK {
+		vals, _, err := client.APIClient.UsersAPI.UsersVals(ctx, meResp.GetId()).Offset(int32(offset)).Limit(99).Execute()
+		if err != nil {
 			return nil, err
 		}
 

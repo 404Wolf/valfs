@@ -3,7 +3,6 @@ package fuse
 import (
 	"context"
 	"log"
-	"net/http"
 	"sync"
 	"syscall"
 
@@ -76,8 +75,8 @@ func refreshBlobs(
 func getMyBlobs(ctx context.Context, client common.Client) ([]valgo.BlobListingItem, error) {
 	log.Println("Fetching all of my blobs")
 
-	blobs, resp, err := client.APIClient.BlobsAPI.BlobsList(ctx).Execute()
-	if err != nil || resp.StatusCode != http.StatusOK {
+	blobs, _, err := client.APIClient.BlobsAPI.BlobsList(ctx).Execute()
+	if err != nil {
 		return nil, err
 	}
 

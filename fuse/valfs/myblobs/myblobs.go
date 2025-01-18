@@ -2,6 +2,8 @@ package fuse
 
 import (
 	"context"
+	"errors"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -14,6 +16,7 @@ import (
 	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
+	"github.com/subosito/gozaru"
 
 	common "github.com/404wolf/valfs/common"
 )
@@ -124,13 +127,10 @@ func (c *MyBlobs) Create(
 	// we don't want to load large amounts of data into memory (it seems like it
 	// does in its source, but will need to be investigated further), but here we
 	// are only loading "{}" into memory.
-	resp, err := c.client.APIClient.BlobsAPI.BlobsStore(ctx, name).
+	_, err = c.client.APIClient.BlobsAPI.BlobsStore(ctx, name).
 		Body(tempFile).
 		Execute()
 	if err != nil {
-		common.ReportError("Error creating blob", err)
-		return nil, nil, 0, syscall.EIO
-	} else if resp.StatusCode != http.StatusCreated {
 		common.ReportError("Error creating blob", err)
 		return nil, nil, 0, syscall.EIO
 	}
@@ -155,55 +155,103 @@ func (c *MyBlobs) Rename(
 	oldName string,
 	newParent fs.InodeEmbedder,
 	newName string,
-	flags uint32,
+	code uint32,
 ) syscall.Errno {
 	if newParent.EmbeddedInode().StableAttr().Ino != c.Inode.StableAttr().Ino {
 		log.Printf("Cannot move blob out of the `myblobs` directory")
 		return syscall.EINVAL
 	}
 
+	// Update metadata for the blob (do book keeping)
 	oldKey, _ := getKeyFromBlobName(oldName)
-
-	if c.GetChild(newName) != nil {
-		return syscall.EEXIST
+	if oldKey == nil {
+		common.ReportError("Blob not found", errors.New("Blob not found"))
+		return syscall.ENOENT
 	}
 
+	newKey := gozaru.Sanitize(newName)
 	inode := c.GetChild(*oldKey)
 	if inode == nil {
 		return syscall.ENOENT
 	}
 	blobFile := inode.Operations().(*blobfile.BlobFile)
 
-	resp, err := c.client.APIClient.BlobsAPI.BlobsStore(ctx, newName).Body(blobFile.File).Execute()
-	if err != nil || resp.StatusCode != http.StatusOK {
-		log.Printf("Error storing blob with new key. Err: %v, Resp: %v", err, resp)
+	// Start a transaction to do the rename
+	err := c.renameTransaction(ctx, oldKey, newKey)
+	if err != nil {
+		common.ReportError("Error renaming blob", err)
 		return syscall.EIO
 	}
 
-	resp, err = c.client.APIClient.BlobsAPI.BlobsDelete(ctx, *oldKey).Execute()
-	if err != nil || resp.StatusCode != http.StatusOK {
-		log.Printf("Error deleting old blob. Err: %v, Resp: %v", err, resp)
-		c.rollbackRename(ctx, newName)
-		return syscall.EIO
-	}
-
-	updatedBlob, resp, err := c.client.APIClient.BlobsAPI.BlobsGet(ctx, newName).Execute()
-	if err != nil || resp.StatusCode != http.StatusOK {
-		log.Printf("Error fetching updated blob. Err: %v, Resp: %v", err, resp)
-		return syscall.EIO
-	}
-	blobFile.File = updatedBlob
-	blobFile.BlobListing.Key = newName
+	// Update the local metadata
+	blobFile.BlobListing.Key = newKey
 
 	return syscall.F_OK
 }
 
-// Attempts to delete the newly created blob in case of a failure
-func (c *MyBlobs) rollbackRename(ctx context.Context, newKey string) {
-	resp, err := c.client.APIClient.BlobsAPI.BlobsDelete(ctx, newKey).Execute()
+func (c *MyBlobs) renameTransaction(ctx context.Context, oldKey *string, newKey string) error {
+	// Fetch the old blob
+	getResp, err := c.client.APIClient.RawRequest(http.MethodGet, "/v1/blob/"+*oldKey, nil)
 	if err != nil {
-		log.Printf("Error rolling back rename (deleting new blob). Err: %v", err)
-	} else if resp.StatusCode != http.StatusOK {
-		log.Printf("Error rolling back rename (deleting new blob). Resp: %v", resp)
+		common.ReportError("Failed to fetch old blob data", err)
+		return err
+	}
+	defer getResp.Body.Close()
+
+	// Prepare to store the new blob
+	pr, pw := io.Pipe()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer pw.Close()
+		defer wg.Done()
+		_, err := io.Copy(pw, getResp.Body)
+		if err != nil {
+			common.ReportError("Error copying blob data", err)
+		}
+	}()
+
+	// Store the new blob
+	storeResp, err := c.client.APIClient.RawRequest(http.MethodPost, "/v1/blob/"+newKey, pr)
+	if err != nil {
+		common.ReportError("Error storing blob with new key", err)
+		return err
+	}
+
+	// Wait to finish writing before ending streaming
+	wg.Wait()
+	storeResp.Body.Close()
+
+	// Check to see if the store was successful
+	if storeResp.StatusCode != http.StatusCreated {
+		common.ReportErrorResp("Error storing blob with new key", storeResp)
+		return errors.New(common.ReportErrorResp("Failed to store new blob: %d", storeResp))
+	}
+
+	// If we've made it this far, the new blob is stored successfully.
+	// Now we can safely delete the old blob.
+	resp, err := c.client.APIClient.BlobsAPI.BlobsDelete(ctx, *oldKey).Execute()
+	if err != nil {
+		log.Printf("Error deleting blob %s: %v", *oldKey, err)
+		return syscall.EIO
+	} else if resp.StatusCode != http.StatusNoContent {
+		return errors.New(common.ReportErrorResp("Error deleting blob", resp))
+	} else {
+		log.Printf("Deleted blob %s", *oldKey)
+	}
+
+	return nil
+}
+
+func (c *MyBlobs) rollbackRename(ctx context.Context, newKey string) {
+	deleteResp, err := c.client.APIClient.RawRequest("DELETE", "/v1/blob/"+newKey, nil)
+	if err != nil {
+		common.ReportError("Error rolling back rename", err)
+		return
+	}
+	defer deleteResp.Body.Close()
+
+	if deleteResp.StatusCode != http.StatusOK {
+		common.ReportErrorResp("Error rolling back rename", deleteResp)
 	}
 }

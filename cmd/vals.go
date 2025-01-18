@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 
-	common "github.com/404wolf/valfs/common"
 	"github.com/404wolf/valgo"
 	"github.com/spf13/cobra"
 )
@@ -41,14 +40,10 @@ var listValsCommand = &cobra.Command{
 		fmt.Println("Listing Vals for", userId)
 
 		req := client.UsersAPI.UsersVals(context.Background(), userId)
-		resp, httpRes, err := req.Execute()
+		resp, _, err := req.Execute()
 
 		if err != nil {
 			log.Fatal(err)
-		}
-
-		if httpRes.StatusCode != 200 {
-			panic(common.ReportErrorResp("Failed to list vals for user %s", httpRes))
 		}
 
 		for _, val := range resp.Data {

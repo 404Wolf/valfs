@@ -3,7 +3,6 @@ package fuse
 import (
 	"context"
 	"log"
-	"net/http"
 	"syscall"
 	"time"
 
@@ -94,14 +93,11 @@ func (c *MyVals) Create(
 	createReq.SetName(valName)
 	createReq.SetType(string(valType))
 	createReq.SetPrivacy(valfile.DefaultPrivacy)
-	val, resp, err := c.client.APIClient.ValsAPI.ValsCreate(ctx).ValsCreateRequest(*createReq).Execute()
+	val, _, err := c.client.APIClient.ValsAPI.ValsCreate(ctx).ValsCreateRequest(*createReq).Execute()
 
 	// Check if the request was successful
 	if err != nil {
 		common.ReportError("Error creating val", err)
-		return nil, nil, 0, syscall.EIO
-	} else if resp.StatusCode != http.StatusCreated {
-		common.ReportErrorResp("Error creating val", resp)
 		return nil, nil, 0, syscall.EIO
 	} else {
 		log.Printf("Created val %v", val)
@@ -165,19 +161,16 @@ func (c *MyVals) Rename(
 	valUpdateReq.SetType(string(valType))
 
 	// Update the val in the backend
-	resp, err := c.client.APIClient.ValsAPI.ValsUpdate(ctx, valFile.BasicData.Id).ValsUpdateRequest(*valUpdateReq).Execute()
-	if err != nil || resp.StatusCode != http.StatusNoContent {
+	_, err := c.client.APIClient.ValsAPI.ValsUpdate(ctx, valFile.BasicData.Id).ValsUpdateRequest(*valUpdateReq).Execute()
+	if err != nil {
 		log.Printf("Error updating val %s: %v", oldName, err)
 		return syscall.EIO
 	}
 
 	// Fetch what the change produced
-	extVal, resp, err := c.client.APIClient.ValsAPI.ValsGet(ctx, valFile.BasicData.Id).Execute()
+	extVal, _, err := c.client.APIClient.ValsAPI.ValsGet(ctx, valFile.BasicData.Id).Execute()
 	if err != nil {
 		common.ReportError("Error fetching val", err)
-		return syscall.EIO
-	} else if resp.StatusCode != http.StatusOK {
-		common.ReportErrorResp("Error fetching val", resp)
 		return syscall.EIO
 	}
 

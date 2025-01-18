@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log"
-	"net/http"
 	"syscall"
 	"time"
 
@@ -31,8 +30,8 @@ type ValFile struct {
 // fetch it.
 func (f *ValFile) GetExtendedData(ctx context.Context) (*valgo.ExtendedVal, error) {
 	if f.ExtendedData == nil {
-		extVal, resp, err := f.client.APIClient.ValsAPI.ValsGet(ctx, f.BasicData.GetId()).Execute()
-		if err != nil || resp.StatusCode != http.StatusOK {
+		extVal, _, err := f.client.APIClient.ValsAPI.ValsGet(ctx, f.BasicData.GetId()).Execute()
+		if err != nil {
 			return nil, errors.New("Failed to fetch extended data")
 		}
 		f.ExtendedData = extVal
@@ -45,10 +44,10 @@ func getValVersionCreatedAt(val valgo.ExtendedVal, client *common.Client) *time.
 	modified := val.VersionCreatedAt
 	if modified == nil {
 		ctx := context.Background()
-		versionList, resp, err := client.APIClient.ValsAPI.ValsList(ctx,
+		versionList, _, err := client.APIClient.ValsAPI.ValsList(ctx,
 			val.Id).Offset(0).Limit(1).Execute()
-		if err != nil || resp.StatusCode != http.StatusOK {
-			common.ReportErrorResp("Error fetching version list", resp, err)
+		if err != nil {
+			common.ReportError("Error fetching version list", err)
 		}
 		modified = &versionList.Data[0].CreatedAt
 	}
@@ -117,8 +116,8 @@ func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 ) {
 	if f.ExtendedData == nil {
 		log.Println("Valfile was lazy. Now getting extended val data for", f.BasicData.Name)
-		extVal, resp, err := f.client.APIClient.ValsAPI.ValsGet(ctx, f.BasicData.GetId()).Execute()
-		if err != nil || resp.StatusCode != http.StatusOK {
+		extVal, _, err := f.client.APIClient.ValsAPI.ValsGet(ctx, f.BasicData.GetId()).Execute()
+		if err != nil {
 			log.Println("Error fetching val", err)
 			return nil, 0, syscall.EIO
 		}
@@ -201,10 +200,9 @@ func (c *ValFile) Write(
 
 	// Make the request to update the val
 	valCreateReq := c.client.APIClient.ValsAPI.ValsCreateVersion(ctx, prevExtVal.GetId()).ValsCreateRequest(*valCreateReqData)
-	_, resp, err := valCreateReq.Execute()
-	if err != nil || resp.StatusCode != http.StatusOK {
+	_, _, err = valCreateReq.Execute()
+	if err != nil {
 		log.Println("Error updating val", err)
-		log.Println("Response", resp)
 		return 0, syscall.EIO
 	}
 	log.Println("Successfully updated val", prevExtVal.Name)
@@ -214,18 +212,18 @@ func (c *ValFile) Write(
 	valUpdateReqData.SetPrivacy(extVal.GetPrivacy())
 	valUpdateReqData.SetReadme(extVal.GetReadme())
 	log.Printf("New val data %v", valUpdateReqData)
-	resp, err = c.client.APIClient.ValsAPI.ValsUpdate(ctx, extVal.GetId()).ValsUpdateRequest(*valUpdateReqData).Execute()
-	if err != nil || resp.StatusCode != http.StatusNoContent {
+	_, err = c.client.APIClient.ValsAPI.ValsUpdate(ctx, extVal.GetId()).ValsUpdateRequest(*valUpdateReqData).Execute()
+	if err != nil {
 		log.Println("Error updating val", err)
-		log.Println("Response", resp)
 		return 0, syscall.EIO
 	}
 	log.Println("Updated val file", prevExtVal.Name)
 
 	// And finally, retreive the val's extended data again
-	extVal, resp, err = c.client.APIClient.ValsAPI.ValsGet(ctx, prevExtVal.GetId()).Execute()
-	if err != nil || resp.StatusCode != http.StatusOK {
-		log.Printf("Error fetching updated val data. error: %v, resp: %v", err, resp)
+	extVal, _, err = c.client.APIClient.ValsAPI.ValsGet(ctx, prevExtVal.GetId()).Execute()
+	if err != nil {
+		common.ReportError("Error fetching val", err)
+		return 0, syscall.EIO
 	}
 	c.ExtendedData = extVal
 

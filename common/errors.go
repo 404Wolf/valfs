@@ -27,4 +27,3 @@ func ReportError(format string, err error, args ...interface{}) string {
 	log.Print(message)
 	return message
 }
-

@@ -23,14 +23,6 @@ func loadEnvFile() error {
 
 func setup() {
 	loadEnvFile()
-
-	tempFile, err := os.CreateTemp("", "run-val")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer os.Remove(tempFile.Name())
-	defer tempFile.Close()
 }
 
 func execute() {
