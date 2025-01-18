@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"os"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,31 +22,56 @@ const BlobFileFlags = syscall.S_IFREG | 0o666
 
 type BlobFile struct {
 	fs.Inode
-	BlobListing valgo.BlobListingItem
-	UUID        uint64
-	client      *common.Client
+	BlobListing     valgo.BlobListingItem
+	UUID            uint64
+	client          *common.Client
+	uploadMutex     sync.Mutex
+	isUpdating      bool
+	writePipe       *io.PipeWriter
+	readPipe        *io.PipeReader
+	uploadWaitGroup sync.WaitGroup
 }
 
 type BlobFileHandle struct {
-	File *os.File
+	file *os.File
 }
 
 var _ = (fs.NodeOpener)((*BlobFile)(nil))
 var _ = (fs.NodeWriter)((*BlobFile)(nil))
 var _ = (fs.NodeSetattrer)((*BlobFile)(nil))
+var _ = (fs.NodeGetattrer)((*BlobFile)(nil))
+var _ = (fs.NodeReleaser)((*BlobFile)(nil))
+
+// NewBlobFileAuto creates a new BlobFile instance and autogenerates a uuid
+func NewBlobFileAuto(data valgo.BlobListingItem, client *common.Client) *BlobFile {
+	return NewBlobFile(data, client, rand.Uint64())
+}
 
 // NewBlobFile creates a new BlobFile instance
-func NewBlobFile(data valgo.BlobListingItem, client *common.Client) *BlobFile {
+func NewBlobFile(
+	data valgo.BlobListingItem,
+	client *common.Client,
+	uuid uint64,
+) *BlobFile {
+	log.Printf("Creating new BlobFile for %s with UUID %d", data.Key, uuid)
 	return &BlobFile{
 		BlobListing: data,
 		client:      client,
-		UUID:        rand.Uint64(),
+		UUID:        uuid,
 	}
 }
 
-// getTempFilePath returns the path for the temporary file
-func (f *BlobFile) getTempFilePath() string {
-	return fmt.Sprintf("/tmp/valfs-blob-%d", f.UUID)
+// NewBlobFileHandle creates a new BlobFileHandle instance
+func NewBlobFileHandle(file *os.File) *BlobFileHandle {
+	log.Printf("Creating new BlobFileHandle for %s", file.Name())
+	return &BlobFileHandle{file: file}
+}
+
+// TempFilePath returns the path for the temporary file
+func (f *BlobFile) TempFilePath() string {
+	// Ensure the folder exists
+	os.MkdirAll("/tmp/valfs-blobs", 0755)
+	return fmt.Sprintf("/tmp/valfs-blobs/blob-%d", f.UUID)
 }
 
 // Open opens the blob file and fetches its content
@@ -55,24 +81,29 @@ func (f *BlobFile) Open(
 ) (fs.FileHandle, uint32, syscall.Errno) {
 	log.Printf("Opening blob file %s", f.BlobListing.Key)
 
-	tempFilePath := f.getTempFilePath()
+	tempFilePath := f.TempFilePath()
 	_, err := os.Stat(tempFilePath)
-	fileExisted := os.IsNotExist(err)
+	fileExisted := !os.IsNotExist(err)
 
 	// Create if not exists (because of the O_CREATE flag)
 	file, err := os.OpenFile(tempFilePath, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
-		common.ReportError("Failed to open temporary file", err)
+		log.Printf("Failed to open temporary file %s: %v", tempFilePath, err)
 		return nil, 0, syscall.EIO
 	}
 
-
-  // If the file didn't exist before that means we'll need to fetch its
-  // contents
+	// If the file didn't exist before that means we'll need to fetch its
+	// contents
 	if !fileExisted {
-		resp, err := f.client.APIClient.RawRequest("GET", "/v1/blob/"+f.BlobListing.Key, nil)
+		log.Printf("Fetching content for blob %s", f.BlobListing.Key)
+		resp, err := f.client.APIClient.RawRequest(
+			ctx,
+			http.MethodGet,
+			"/v1/blob/"+f.BlobListing.Key,
+			nil,
+		)
 		if err != nil {
-			common.ReportError("Failed to fetch blob content", err)
+			log.Printf("Failed to fetch blob content for %s: %v", f.BlobListing.Key, err)
 			file.Close()
 			return nil, 0, syscall.EIO
 		}
@@ -80,13 +111,14 @@ func (f *BlobFile) Open(
 
 		_, err = io.Copy(file, resp.Body)
 		if err != nil {
-			common.ReportError("Failed to copy blob content to file", err)
+			log.Printf("Failed to copy blob content to file for %s: %v", f.BlobListing.Key, err)
 			file.Close()
 			return nil, 0, syscall.EIO
 		}
+		log.Printf("Successfully fetched and wrote content for blob %s", f.BlobListing.Key)
 	}
 
-	return &BlobFileHandle{File: file}, fuse.O_ANYWRITE, syscall.F_OK
+	return &BlobFileHandle{file: file}, fuse.O_ANYWRITE, syscall.F_OK
 }
 
 // Read reads data from the blob file
@@ -95,11 +127,17 @@ func (f *BlobFileHandle) Read(
 	buf []byte,
 	off int64,
 ) (fuse.ReadResult, syscall.Errno) {
-	return fuse.ReadResultFd(uintptr(f.File.Fd()), off, len(buf)), syscall.F_OK
+	log.Printf("Reading %d bytes at offset %d from %s", len(buf), off, f.file.Name())
+	return fuse.ReadResultFd(uintptr(f.file.Fd()), off, len(buf)), syscall.F_OK
 }
 
 // Getattr retrieves the attributes of the blob file
-func (f *BlobFile) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+func (f *BlobFile) Getattr(
+	ctx context.Context,
+	fh fs.FileHandle,
+	out *fuse.AttrOut,
+) syscall.Errno {
+	log.Printf("Getting attributes for blob %s", f.BlobListing.Key)
 	out.Mode = BlobFileFlags
 	out.Size = uint64(*f.BlobListing.Size)
 	modified := f.BlobListing.GetLastModified()
@@ -116,43 +154,76 @@ func (c *BlobFile) Write(
 ) (uint32, syscall.Errno) {
 	bfh := fh.(*BlobFileHandle)
 
+	log.Printf("Writing %d bytes at offset %d to %s", len(data), off, c.BlobListing.Key)
+
 	// Write to the temp file at the specified offset
-	wrote, err := bfh.File.WriteAt(data, off)
+	wrote, err := bfh.file.WriteAt(data, off)
 	if err != nil {
-		common.ReportError("Failed to write to temporary file", err)
+		log.Printf("Failed to write to temporary file for %s: %v", c.BlobListing.Key, err)
 		return 0, syscall.EIO
 	}
 
 	// Get the current file size
-	fileInfo, err := bfh.File.Stat()
+	fileInfo, err := bfh.file.Stat()
 	if err != nil {
-		common.ReportError("Failed to stat temporary file", err)
+		log.Printf("Failed to stat temporary file for %s: %v", c.BlobListing.Key, err)
 		return 0, syscall.EIO
 	}
-	fileSize := fileInfo.Size()
 
 	// Update the size in the BlobListing
-	int32Size := int32(fileSize)
-	c.BlobListing.Size = &int32Size
+	c.BlobListing.SetSize(int32(fileInfo.Size()))
 
-	// Seek to the start of the file
-	if _, err := bfh.File.Seek(0, 0); err != nil {
-		common.ReportError("Failed to seek to start of file", err)
-		return 0, syscall.EIO
+	c.uploadMutex.Lock()
+	defer c.uploadMutex.Unlock()
+
+	if !c.isUpdating {
+		log.Printf("Starting new upload for %s", c.BlobListing.Key)
+
+		c.isUpdating = true
+		c.readPipe, c.writePipe = io.Pipe()
+
+		// We won't release the file while we are uploading
+		c.uploadWaitGroup.Add(1)
+		go c.uploadToPipe(ctx)
 	}
 
-	// Upload the entire file
-	_, err = c.client.APIClient.RawRequest(http.MethodPost, "/v1/blob/"+c.BlobListing.Key, bfh.File)
+	// Write the data to the pipe
+	_, err = c.writePipe.Write(data)
 	if err != nil {
-		common.ReportError("Failed to upload blob content", err)
+		log.Printf("Failed to write to pipe for %s: %v", c.BlobListing.Key, err)
 		return 0, syscall.EIO
 	}
 
-	// Update the last modified time (this might not be the same as we would see
-	// with the API, but it makes editors happy)
-	c.BlobListing.SetLastModified(time.Now())
-
+	log.Printf("Successfully wrote %d bytes to %s", wrote, c.BlobListing.Key)
 	return uint32(wrote), syscall.F_OK
+}
+
+func (c *BlobFile) uploadToPipe(ctx context.Context) {
+	defer c.uploadWaitGroup.Done()
+	defer c.readPipe.Close()
+
+	log.Printf("Starting upload to server for %s", c.BlobListing.Key)
+
+	_, err := c.client.APIClient.RawRequest(
+		ctx,
+		http.MethodPost,
+		"/v1/blob/"+c.BlobListing.Key,
+		c.readPipe,
+	)
+	if err != nil {
+		log.Printf("Failed to upload blob content for %s: %v", c.BlobListing.Key, err)
+		return
+	}
+
+	// Update the last modified time
+	now := time.Now()
+	c.BlobListing.SetLastModified(now)
+
+	c.uploadMutex.Lock()
+	c.isUpdating = false
+	c.uploadMutex.Unlock()
+
+	log.Printf("Finished upload to server for %s", c.BlobListing.Key)
 }
 
 // Setattr sets the attributes of the blob file
@@ -162,9 +233,26 @@ func (f *BlobFile) Setattr(
 	in *fuse.SetAttrIn,
 	out *fuse.AttrOut,
 ) syscall.Errno {
+	log.Printf("Setting attributes for blob %s", f.BlobListing.Key)
 	out.Size = in.Size
 	out.Mode = BlobFileFlags
-	modified := f.BlobListing.GetLastModified()
-	out.SetTimes(&modified, &modified, &modified)
+	return syscall.F_OK
+}
+
+// Release is called when the file is closed
+func (f *BlobFile) Release(ctx context.Context, fh fs.FileHandle) syscall.Errno {
+	log.Printf("Releasing blob file %s", f.BlobListing.Key)
+	f.uploadMutex.Lock()
+	defer f.uploadMutex.Unlock()
+
+	if f.isUpdating {
+		log.Printf("Waiting for ongoing upload to finish for %s", f.BlobListing.Key)
+		// Close the write pipe to signal the end of the upload
+		f.writePipe.Close()
+		// Wait for the upload to finish
+		f.uploadWaitGroup.Wait()
+		log.Printf("Ongoing upload finished for %s", f.BlobListing.Key)
+	}
+
 	return syscall.F_OK
 }

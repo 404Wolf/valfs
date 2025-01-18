@@ -3,6 +3,7 @@ package fuse
 import (
 	"context"
 	"log"
+	"os"
 	"sync"
 	"syscall"
 
@@ -32,16 +33,22 @@ func refreshBlobs(
 
 	// Update or add new blobs
 	for _, newBlob := range newBlobs {
+		// Previous blob keys is a decent source, but it's not perfect. It requires
+		// no IO, so we start with it.
 		if prevBlobFile, exists := previousBlobKeys[newBlob.Key]; exists {
-			// Update existing blob if it's newer
-			if newBlob.GetLastModified().After(prevBlobFile.BlobListing.GetLastModified()) {
-				prevBlobFile.BlobListing = newBlob
-				prevBlobFile.EmbeddedInode().Root().NotifyContent(0, 0)
-				log.Printf("Updated blob %s, found newer on valtown", newBlob.Key)
+			// Now, we see if it exists in the file system (is being/was created)
+			_, err := os.Stat(prevBlobFile.TempFilePath())
+			if os.IsNotExist(err) {
+				// Update existing blob if it's newer
+				if newBlob.GetLastModified().After(prevBlobFile.BlobListing.GetLastModified()) {
+					prevBlobFile.BlobListing = newBlob
+					prevBlobFile.EmbeddedInode().Root().NotifyContent(0, 0)
+					log.Printf("Updated blob %s, found newer on valtown", newBlob.Key)
+				}
 			}
 		} else {
 			// Add new blob
-			blobFile := blobfile.NewBlobFile(newBlob, &client)
+			blobFile := blobfile.NewBlobFileAuto(newBlob, &client)
 			newInode := root.NewPersistentInode(ctx, blobFile, fs.StableAttr{Mode: syscall.S_IFREG})
 			sanitizedFilename := gozaru.Sanitize(newBlob.Key)
 			blobNameToKey.Store(sanitizedFilename, newBlob.Key)

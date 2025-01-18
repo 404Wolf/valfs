@@ -1,5 +1,4 @@
 ALL_GO_FILES := $(shell find . -type f -name '*.go')
-
 all: valfs
 
 valfs: $(ALL_GO_FILES)
@@ -9,9 +8,9 @@ run: valfs
 	./valfs
 
 test:
-	go test ./...
+	go test -v ./...
 
 clean:
 	rm -f valfs
 
-.PHONY: test run clean
+.PHONY: all run test clean 

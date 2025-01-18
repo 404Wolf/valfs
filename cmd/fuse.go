@@ -30,7 +30,7 @@ var mountCmd = &cobra.Command{
 		)
 
 		fmt.Println("Mounting ValFS file system at", directory)
-		if err := root.Mount(); err != nil {
+		if err := root.Mount(func() {}); err != nil {
 			log.Fatalf("Mount failed: %v", err)
 		}
 	},

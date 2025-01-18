@@ -28,7 +28,11 @@ func NewAPIClient(cfg *valgo.Configuration) *APIClient {
 	}
 }
 
-func (c *APIClient) RawRequest(method, path string, body io.Reader) (*http.Response, error) {
+func (c *APIClient) RawRequest(
+	ctx context.Context,
+	method, path string,
+	body io.Reader,
+) (*http.Response, error) {
 	// Use the first server URL if available, otherwise fall back to Scheme and Host
 	var baseURL string
 	if len(c.cfg.Servers) > 0 {
@@ -43,7 +47,7 @@ func (c *APIClient) RawRequest(method, path string, body io.Reader) (*http.Respo
 		return nil, err
 	}
 	u.Path = path
-	req, err := http.NewRequest(method, u.String(), body)
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), body)
 	if err != nil {
 		return nil, err
 	}

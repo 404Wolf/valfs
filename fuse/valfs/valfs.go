@@ -53,7 +53,7 @@ func (c *ValFS) AddDenoJSON(ctx context.Context) {
 }
 
 // Mount the filesystem
-func (c *ValFS) Mount() error {
+func (c *ValFS) Mount(doneSettingUp func()) error {
 	log.Printf("Mounting ValFS file system at %s", c.MountDir)
 	server, err := fs.Mount(c.MountDir, c, &fs.Options{
 		MountOptions: fuse.MountOptions{
@@ -74,6 +74,8 @@ func (c *ValFS) Mount() error {
 			c.AddMyValsDir(ctx) // Add the folder with all the vals
 			c.AddBlobsDir(ctx)  // Add the folder with all the blobs
 			c.AddDenoJSON(ctx)  // Add the deno.json file
+
+			doneSettingUp() // Callback
 		},
 	})
 

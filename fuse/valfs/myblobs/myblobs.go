@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"regexp"
@@ -16,7 +17,6 @@ import (
 	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
-	"github.com/subosito/gozaru"
 
 	common "github.com/404wolf/valfs/common"
 )
@@ -112,38 +112,49 @@ func (c *MyBlobs) Create(
 
 	log.Printf("Creating blob %s", name)
 
-	content := []byte("{}")
-	tempFile, err := os.CreateTemp("", "valfs-blob-*")
-	if err != nil {
-		common.ReportError("Failed to create temp file", err)
-		return nil, nil, 0, syscall.EIO
-	}
-	_, err = tempFile.Write(content)
-	tempFile.Seek(0, 0)
+	// Determine the uuid for the new val file so we can create a temp file for
+	// it ahead of time
+	uuid := rand.Uint64()
 
-	// For reading blobs, we use a raw http request so that we can stream the
-	// data to the file. For creating a new blob, we can just use the SDK's
-	// function, which accepts an *os.File. We don't do this for reading because
-	// we don't want to load large amounts of data into memory (it seems like it
-	// does in its source, but will need to be investigated further), but here we
-	// are only loading "{}" into memory.
-	_, err = c.client.APIClient.BlobsAPI.BlobsStore(ctx, name).
-		Body(tempFile).
-		Execute()
-	if err != nil {
-		common.ReportError("Error creating blob", err)
-		return nil, nil, 0, syscall.EIO
-	}
-	log.Printf("Created blob %v successfully", name)
-
+	// The val town API does not give us the blob listing after we make it so we
+	// guess what it would be instead of doing a second round trip
 	blobListingItem := valgo.NewBlobListingItem(name)
-	blobListingItem.SetSize(int32(len(content)))
-	blobFile := blobfile.NewBlobFile(*blobListingItem, c.client)
-	newInode := c.NewInode(
+	blobListingItem.SetKey(name)
+	blobListingItem.SetSize(0)
+	blobListingItem.SetLastModified(time.Now().Add(-10 * time.Second))
+	blobFile := blobfile.NewBlobFile(*blobListingItem, c.client, uuid)
+
+	// Create the empty blob on valtown
+	tempFilePath := blobFile.TempFilePath()
+	file, err := os.OpenFile(tempFilePath, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		common.ReportError("Failed to open temporary file", err)
+		return nil, nil, 0, syscall.EIO
+	}
+
+	// Create the new inode
+	newInode := c.NewPersistentInode(
 		ctx,
 		blobFile,
-		fs.StableAttr{Mode: syscall.S_IFREG, Ino: blobFile.UUID})
-	fileHandle := &blobfile.BlobFileHandle{File: tempFile}
+		fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
+
+	// Create the new entry in val town blob store
+	resp, err := c.client.APIClient.RawRequest(
+		ctx,
+		http.MethodPost,
+		"/v1/blob/"+name,
+		file,
+	)
+	if err != nil {
+		common.ReportError("Failed to create blob", err)
+		return nil, nil, 0, syscall.EIO
+	} else if resp.StatusCode != http.StatusCreated {
+		common.ReportErrorResp("Failed to create blob", resp)
+		return nil, nil, 0, syscall.EIO
+	}
+
+	// Open the file handle
+	fileHandle, _, _ := blobFile.Open(ctx, flags)
 
 	return newInode, fileHandle, fuse.FOPEN_DIRECT_IO, syscall.F_OK
 }
@@ -157,8 +168,14 @@ func (c *MyBlobs) Rename(
 	newName string,
 	code uint32,
 ) syscall.Errno {
+	// Prevent from moving it out of the directory
 	if newParent.EmbeddedInode().StableAttr().Ino != c.Inode.StableAttr().Ino {
 		log.Printf("Cannot move blob out of the `myblobs` directory")
+		return syscall.EINVAL
+	}
+
+	// Make sure the new name is valid
+	if ok := validateName(newName); !ok {
 		return syscall.EINVAL
 	}
 
@@ -169,7 +186,6 @@ func (c *MyBlobs) Rename(
 		return syscall.ENOENT
 	}
 
-	newKey := gozaru.Sanitize(newName)
 	inode := c.GetChild(*oldKey)
 	if inode == nil {
 		return syscall.ENOENT
@@ -177,21 +193,26 @@ func (c *MyBlobs) Rename(
 	blobFile := inode.Operations().(*blobfile.BlobFile)
 
 	// Start a transaction to do the rename
-	err := c.renameTransaction(ctx, oldKey, newKey)
+	err := c.renameTransaction(ctx, oldKey, newName)
 	if err != nil {
 		common.ReportError("Error renaming blob", err)
 		return syscall.EIO
 	}
 
 	// Update the local metadata
-	blobFile.BlobListing.Key = newKey
+	blobFile.BlobListing.Key = newName
 
 	return syscall.F_OK
 }
 
 func (c *MyBlobs) renameTransaction(ctx context.Context, oldKey *string, newKey string) error {
 	// Fetch the old blob
-	getResp, err := c.client.APIClient.RawRequest(http.MethodGet, "/v1/blob/"+*oldKey, nil)
+	getResp, err := c.client.APIClient.RawRequest(
+		ctx,
+		http.MethodGet,
+		"/v1/blob/"+*oldKey,
+		nil,
+	)
 	if err != nil {
 		common.ReportError("Failed to fetch old blob data", err)
 		return err
@@ -212,7 +233,12 @@ func (c *MyBlobs) renameTransaction(ctx context.Context, oldKey *string, newKey 
 	}()
 
 	// Store the new blob
-	storeResp, err := c.client.APIClient.RawRequest(http.MethodPost, "/v1/blob/"+newKey, pr)
+	storeResp, err := c.client.APIClient.RawRequest(
+		ctx,
+		http.MethodPost,
+		"/v1/blob/"+newKey,
+		pr,
+	)
 	if err != nil {
 		common.ReportError("Error storing blob with new key", err)
 		return err
@@ -244,7 +270,12 @@ func (c *MyBlobs) renameTransaction(ctx context.Context, oldKey *string, newKey 
 }
 
 func (c *MyBlobs) rollbackRename(ctx context.Context, newKey string) {
-	deleteResp, err := c.client.APIClient.RawRequest("DELETE", "/v1/blob/"+newKey, nil)
+	deleteResp, err := c.client.APIClient.RawRequest(
+		ctx,
+		http.MethodDelete,
+		"/v1/blob/"+newKey,
+		nil,
+	)
 	if err != nil {
 		common.ReportError("Error rolling back rename", err)
 		return
