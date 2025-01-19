@@ -8,7 +8,7 @@ run: valfs
 	./valfs
 
 test:
-	go test -v ./...
+	GOMAXPROCS=5 go test -v ./...
 
 clean:
 	rm -f valfs

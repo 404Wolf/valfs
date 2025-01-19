@@ -72,12 +72,14 @@ var _ = (fs.NodeUnlinker)((*MyBlobs)(nil))
 
 // Handle deletion of a file by also deleting the blob
 func (c *MyBlobs) Unlink(ctx context.Context, name string) syscall.Errno {
+	// Get the key of the blob
 	key, ok := getKeyFromBlobName(name)
 	if !ok {
 		return syscall.ENOENT
 	}
 	log.Printf("Deleting blob %s", *key)
 
+	// Attempt to delete the blob
 	_, err := c.client.APIClient.BlobsAPI.BlobsDelete(ctx, *key).Execute()
 	if err != nil {
 		log.Printf("Error deleting blob %s: %v", *key, err)
@@ -109,6 +111,7 @@ func (c *MyBlobs) Create(
 	if ok := validateName(name); !ok {
 		return nil, nil, 0, syscall.EINVAL
 	}
+	blobNameToKey.Store(name, name)
 
 	log.Printf("Creating blob %s", name)
 
@@ -180,8 +183,8 @@ func (c *MyBlobs) Rename(
 	}
 
 	// Update metadata for the blob (do book keeping)
-	oldKey, _ := getKeyFromBlobName(oldName)
-	if oldKey == nil {
+	oldKey, ok := getKeyFromBlobName(oldName)
+	if !ok {
 		common.ReportError("Blob not found", errors.New("Blob not found"))
 		return syscall.ENOENT
 	}
@@ -201,6 +204,10 @@ func (c *MyBlobs) Rename(
 
 	// Update the local metadata
 	blobFile.BlobListing.Key = newName
+
+	// Update the name-to-key mapping
+	blobNameToKey.Delete(oldName)
+	blobNameToKey.Store(newName, newName)
 
 	return syscall.F_OK
 }

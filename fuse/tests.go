@@ -1,6 +1,8 @@
 package fuse
 
 import (
+	"bufio"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,18 +62,35 @@ func SetupTests(t *testing.T) TestData {
 		t.Fatalf("Failed to create temporary directory: %v", err)
 	}
 
+	// Path to the valfs binary
 	valfsPath := filepath.Join(projectRoot, "valfs")
 
 	var cmd *exec.Cmd
 
+	// Mount the valfs file system
 	mount := func() {
-		cmd = exec.Command(valfsPath, "mount", testDir)
+		cmd = exec.Command(valfsPath, "mount", testDir, "--verbose")
 		cmd.Env = os.Environ()
 		cmd.Dir = projectRoot
 
+		// Create a pipe for stdout
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatalf("Failed to create stdout pipe: %v", err)
+		}
+
+		// Start the command
 		if err := cmd.Start(); err != nil {
 			t.Fatalf("Failed to start valfs mount command: %v", err)
 		}
+
+		// Start a goroutine to read from the pipe and print to console
+		go func() {
+			scanner := bufio.NewScanner(stdout)
+			for scanner.Scan() {
+				fmt.Println(scanner.Text())
+			}
+		}()
 
 		// Wait for the filesystem to be mounted
 		if !waitForMount(testDir) {
@@ -79,6 +98,7 @@ func SetupTests(t *testing.T) TestData {
 		}
 	}
 
+	// Unmount the valfs file system
 	unmount := func() {
 		if cmd != nil && cmd.Process != nil {
 			cmd.Process.Signal(os.Interrupt)

@@ -4,8 +4,10 @@ import (
 	"context"
 	"io"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/404wolf/valgo"
 )
@@ -14,6 +16,8 @@ type Client struct {
 	User      valgo.User
 	APIKey    string
 	APIClient *APIClient
+	Started   time.Time
+	Id        uint64
 }
 
 type APIClient struct {
@@ -101,6 +105,8 @@ func NewClient(apiKey string, ctx context.Context) *Client {
 		APIClient: apiClient,
 		APIKey:    apiKey,
 		User:      *user,
+		Started:   time.Now(),
+		Id:        rand.Uint64(),
 	}
 
 	log.Printf("Client: %v", client)
