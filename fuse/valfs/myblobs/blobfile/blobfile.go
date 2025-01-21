@@ -29,6 +29,7 @@ type BlobFile struct {
 	uploadCtx              context.Context
 	uploadCancel           context.CancelFunc
 	uploadInProgress       bool
+	dataLenInAir           int64
 	failedLastWrite        bool
 	writePipe              *io.PipeWriter
 	readPipe               *io.PipeReader
@@ -151,146 +152,6 @@ func (f *BlobFile) Getattr(
 	return syscall.F_OK
 }
 
-// Write writes data to the file at the specified offset
-func (f *BlobFile) Write(
-	ctx context.Context,
-	fh fs.FileHandle,
-	data []byte,
-	off int64,
-) (uint32, syscall.Errno) {
-	bfh := fh.(*BlobFileHandle)
-
-	log.Printf("Writing %d bytes at offset %d to %s", len(data), off, f.BlobListing.Key)
-
-	// Write data to the temporary file (our "source of truth")
-	wrote, err := bfh.file.WriteAt(data, off)
-	if err != nil {
-		log.Printf("Failed to write to temporary file for %s: %v", f.BlobListing.Key, err)
-		return 0, syscall.EIO
-	}
-
-	// Determine if we need to start a new upload or append to the existing one
-	if !f.uploadInProgress || off != f.writePipeLastByteIndex+1 {
-		// Cancel any existing upload
-		if f.uploadInProgress {
-			log.Printf("Cancelling existing upload for %s", f.BlobListing.Key)
-			f.uploadCancel()
-		}
-
-		// Initialize a new upload
-		f.initNewUpload(off)
-	}
-
-	// Write the new data to the pipe
-	_, err = f.writePipe.Write(data)
-	if err != nil {
-		log.Printf("Failed to write to pipe for %s: %v", f.BlobListing.Key, err)
-		return 0, syscall.EIO
-	}
-
-	// Update writePipeLastByteIndex
-	f.writePipeLastByteIndex = off + int64(wrote)
-
-	// Reset the write timeout timer
-	f.resetWriteTimeout()
-
-	// Update file size
-	fileInfo, err := bfh.file.Stat()
-	if err != nil {
-		log.Printf("Failed to stat temporary file for %s: %v", f.BlobListing.Key, err)
-		return 0, syscall.EIO
-	}
-	f.BlobListing.SetSize(int32(fileInfo.Size()))
-
-	log.Printf("Successfully wrote %d bytes to %s", wrote, f.BlobListing.Key)
-	f.BlobListing.SetLastModified(time.Now())
-
-	return uint32(wrote), syscall.F_OK
-}
-
-// resetWriteTimeout resets the write timeout timer
-// This function should be called after each successful write operation
-func (f *BlobFile) resetWriteTimeout() {
-	// Stop the existing timer if it's running
-	if f.writeTimer != nil {
-		f.writeTimer.Stop()
-	}
-
-	// Start a new timer
-	f.writeTimer = time.AfterFunc(writeTimeout, func() {
-		if f.writePipe != nil {
-			log.Printf("Write timeout reached for %s, closing pipe", f.BlobListing.Key)
-			f.writePipe.Close()
-		}
-	})
-}
-
-// initNewUpload initializes a new upload process
-func (f *BlobFile) initNewUpload(off int64) {
-	log.Printf("Initializing new upload for %s", f.BlobListing.Key)
-	f.readPipe, f.writePipe = io.Pipe()
-
-	// Put the old data into the pipe if necessary
-	if off > 0 {
-		f.writeOldDataToPipe()
-	}
-
-	f.writePipeLastByteIndex = off
-	f.uploadCtx, f.uploadCancel = context.WithCancel(context.Background())
-	f.uploadInProgress = true
-	go f.startUpload()
-
-	// Start the write timeout timer
-	f.resetWriteTimeout()
-}
-
-// writeOldDataToPipe is a helper function that writes existing data to the
-// write pipe before the new data gets written
-func (f *BlobFile) writeOldDataToPipe() {
-	file, err := os.Open(f.TempFilePath())
-	if err != nil {
-		log.Printf("Failed to open temporary file for %s: %v", f.BlobListing.Key, err)
-		return
-	}
-	defer file.Close()
-	_, err = io.Copy(f.writePipe, file)
-	log.Printf("Successfully copied old data to pipe for %s", f.BlobListing.Key)
-	if err != nil {
-		log.Printf("Failed to copy old data to pipe for %s: %v", f.BlobListing.Key, err)
-	}
-}
-
-// startUpload initiates the upload process for the file
-func (f *BlobFile) startUpload() {
-	defer func() {
-		f.uploadInProgress = false
-		if f.writePipe != nil {
-			f.writePipe.Close()
-		}
-		if f.readPipe != nil {
-			f.readPipe.Close()
-		}
-	}()
-
-	// Upload the file to the server
-	log.Printf("Uploading blob %s to server", f.BlobListing.Key)
-	_, err := f.client.APIClient.RawRequest(
-		f.uploadCtx,
-		http.MethodPost,
-		"/v1/blob/"+f.BlobListing.Key,
-		f.readPipe,
-	)
-
-	// Report the status of the upload
-	if err != nil {
-		common.ReportError("Failed to upload file %v", err, f.BlobListing.Key)
-		f.failedLastWrite = true
-	} else {
-		log.Printf("Successfully uploaded file %s", f.BlobListing.Key)
-		f.failedLastWrite = false
-	}
-}
-
 // Setattr sets the attributes of the blob file
 func (f *BlobFile) Setattr(
 	ctx context.Context,
@@ -307,12 +168,6 @@ func (f *BlobFile) Setattr(
 // Release closes the file handle and cleans up resources
 func (f *BlobFile) Release(ctx context.Context, fh fs.FileHandle) syscall.Errno {
 	log.Printf("Releasing blob file %s", f.BlobListing.Key)
-
-	// Start a new upload now if the last one failed and was not recovered from
-	if f.failedLastWrite {
-		f.initNewUpload(0)
-		log.Printf("Previous upload failed so starting new upload before releasing %s", f.BlobListing.Key)
-	}
 
 	// Wait for the upload to finish
 	log.Printf("Waiting for upload to finish for %s", f.BlobListing.Key)

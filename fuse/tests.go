@@ -3,6 +3,7 @@ package fuse
 import (
 	"bufio"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,6 +40,24 @@ func findProjectRoot() (string, error) {
 		}
 		dir = parent
 	}
+}
+
+// setupTest prepares a new test environment for each test
+func SetupTest(t *testing.T, dirName string) (*TestData, string) {
+	t.Helper()
+
+	// Set up the test filesystem
+	testData := SetupTests(t)
+
+	// Define the blob directory within the mount point
+	blobDir := filepath.Join(testData.MountPoint, dirName)
+
+	return &testData, blobDir
+}
+
+// generateRandomFileName generates a random file name with a given prefix
+func GenerateRandomFileName(prefix string) string {
+	return fmt.Sprintf("%d%s", rand.Intn(999999), prefix)
 }
 
 // SetupTests prepares the test environment and returns necessary data

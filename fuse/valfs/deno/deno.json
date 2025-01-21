@@ -4,7 +4,14 @@
   "compilerOptions": {
     "noImplicitAny": false,
     "strict": false,
-    "types": ["https://www.val.town/types/valtown.d.ts", "dom"]
+    "types": ["https://www.val.town/types/valtown.d.ts"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "dom.asynciterable",
+      "deno.ns",
+      "deno.unstable"
+    ]
   },
   "lint": {
     "rules": {
