@@ -41,7 +41,7 @@ func (c *ValFS) AddMyValsDir(ctx context.Context) {
 }
 
 func (c *ValFS) AddBlobsDir(ctx context.Context) {
-	myValsDir := blobs.NewBlobs(&c.Inode, c.client, ctx)
+	myValsDir := blobs.NewMyBlobs(&c.Inode, c.client, ctx)
 	c.AddChild("myblobs", &myValsDir.Inode, true)
 }
 

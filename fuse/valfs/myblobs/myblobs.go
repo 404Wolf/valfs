@@ -28,10 +28,14 @@ var blobNameToKey sync.Map
 
 var validFilenameRegex = regexp.MustCompile(`^[^\x00-\x1f/]+$`)
 
+// validate a filename to make sure it can be used as a blobstore key. We could
+// sanitize instead but it's easier to not do an additional rename after the
+// user does a rename.
 func validateName(filename string) bool {
 	return validFilenameRegex.MatchString(filename) && filename != "." && filename != ".."
 }
 
+// getKeyFromBlobName gets the key of the blob from the blob name
 func getKeyFromBlobName(name string) (*string, bool) {
 	key, ok := blobNameToKey.Load(name)
 	if !ok {
@@ -49,7 +53,7 @@ type MyBlobs struct {
 
 // Set up background refresh of blobs and retrieve an auto updating folder of
 // blob files
-func NewBlobs(parent *fs.Inode, client *common.Client, ctx context.Context) *MyBlobs {
+func NewMyBlobs(parent *fs.Inode, client *common.Client, ctx context.Context) *MyBlobs {
 	myBlobsDir := &MyBlobs{
 		client: client,
 	}

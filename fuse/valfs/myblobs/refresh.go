@@ -23,6 +23,7 @@ func refreshBlobs(
 	blobNameToKey *sync.Map,
 	client common.Client,
 ) error {
+	return nil
 	newBlobs, err := getMyBlobs(ctx, client)
 	if err != nil {
 		common.ReportError("Error fetching blobs", err)
