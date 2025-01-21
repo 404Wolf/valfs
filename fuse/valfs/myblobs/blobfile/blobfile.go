@@ -29,6 +29,7 @@ type BlobFile struct {
 	uploadCtx              context.Context
 	uploadCancel           context.CancelFunc
 	uploadInProgress       bool
+	dataLenInAir           int64
 	failedLastWrite        bool
 	writePipe              *io.PipeWriter
 	readPipe               *io.PipeReader
