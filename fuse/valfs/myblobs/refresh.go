@@ -4,24 +4,24 @@ import (
 	"context"
 	"log"
 	"os"
-	"sync"
 	"syscall"
 
 	common "github.com/404wolf/valfs/common"
-	blobfile "github.com/404wolf/valfs/fuse/valfs/myblobs/blobfile"
 	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/subosito/gozaru"
 )
 
-var previousBlobKeys = make(map[string]*blobfile.BlobFile)
+var previousBlobKeys = make(map[string]*BlobFile)
 
 // Refresh the list of blobs in the filesystem
 func refreshBlobs(
 	ctx context.Context,
 	root *fs.Inode,
-	blobNameToKey *sync.Map,
+	blobNameToKey *cmap.ConcurrentMap[string, string],
 	client common.Client,
+	myBlobs *MyBlobs,
 ) error {
 	newBlobs, err := getMyBlobs(ctx, client)
 	if err != nil {
@@ -48,10 +48,10 @@ func refreshBlobs(
 			}
 		} else {
 			// Add new blob
-			blobFile := blobfile.NewBlobFileAuto(newBlob, &client)
+			blobFile := NewBlobFileAuto(newBlob, &client, myBlobs)
 			newInode := root.NewPersistentInode(ctx, blobFile, fs.StableAttr{Mode: syscall.S_IFREG})
 			sanitizedFilename := gozaru.Sanitize(newBlob.Key)
-			blobNameToKey.Store(sanitizedFilename, newBlob.Key)
+			blobNameToKey.Set(sanitizedFilename, newBlob.Key)
 			root.AddChild(sanitizedFilename, newInode, true)
 			previousBlobKeys[newBlob.Key] = blobFile
 			log.Printf("Added blob %s, found fresh on valtown", newBlob.Key)
@@ -70,7 +70,7 @@ func refreshBlobs(
 		if !found {
 			root.RmChild(key)
 			delete(previousBlobKeys, key)
-			blobNameToKey.Delete(gozaru.Sanitize(key))
+			blobNameToKey.Remove(gozaru.Sanitize(key))
 			log.Printf("Removed blob %s no longer found on valtown", key)
 		}
 	}

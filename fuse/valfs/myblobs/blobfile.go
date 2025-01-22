@@ -23,38 +23,31 @@ const BlobFileFlags = syscall.S_IFREG | 0o666
 // BlobFile represents a file in the FUSE filesystem
 type BlobFile struct {
 	fs.Inode
-	BlobListing            valgo.BlobListingItem
-	UUID                   uint64
-	client                 *common.Client
-	uploadCtx              context.Context
-	uploadCancel           context.CancelFunc
-	uploadInProgress       bool
-	dataLenInAir           int64
-	failedLastWrite        bool
-	writePipe              *io.PipeWriter
-	readPipe               *io.PipeReader
-	writePipeLastByteIndex int64
-	writeTimer             *time.Timer // Timer to track write inactivity
+
+	UUID        uint64
+	BlobListing valgo.BlobListingItem
+	myBlobs     *MyBlobs
+	client      *common.Client
 }
 
-// BlobFileHandle represents an open file handle
-type BlobFileHandle struct {
-	file *os.File
-}
-
-// Ensure BlobFile implements necessary interfaces
 var _ = (fs.NodeOpener)((*BlobFile)(nil))
 var _ = (fs.NodeWriter)((*BlobFile)(nil))
 var _ = (fs.NodeSetattrer)((*BlobFile)(nil))
 var _ = (fs.NodeGetattrer)((*BlobFile)(nil))
 var _ = (fs.NodeReleaser)((*BlobFile)(nil))
 
-// writeTimeout defines the duration of inactivity after which the write pipe will be closed
-const writeTimeout = 5 * time.Second
+// BlobFileHandle represents an open file handle
+type BlobFileHandle struct {
+	file *os.File
+}
 
 // NewBlobFileAuto creates a new BlobFile with a random UUID
-func NewBlobFileAuto(data valgo.BlobListingItem, client *common.Client) *BlobFile {
-	return NewBlobFile(data, client, rand.Uint64())
+func NewBlobFileAuto(
+	data valgo.BlobListingItem,
+	client *common.Client,
+	myBlobs *MyBlobs,
+) *BlobFile {
+	return NewBlobFile(data, client, rand.Uint64(), myBlobs)
 }
 
 // NewBlobFile creates a new BlobFile with the given data, client, and UUID
@@ -62,12 +55,14 @@ func NewBlobFile(
 	data valgo.BlobListingItem,
 	client *common.Client,
 	uuid uint64,
+	myBlob *MyBlobs,
 ) *BlobFile {
 	log.Printf("Creating new BlobFile for %s with UUID %d", data.Key, uuid)
 	return &BlobFile{
 		BlobListing: data,
 		client:      client,
 		UUID:        uuid,
+		myBlobs:     myBlob,
 	}
 }
 
@@ -77,7 +72,8 @@ func NewBlobFileHandle(file *os.File) *BlobFileHandle {
 	return &BlobFileHandle{file: file}
 }
 
-// TempFilePath returns the path for the temporary file associated with this BlobFile
+// TempFilePath returns the path for the temporary file associated with this
+// BlobFile
 func (f *BlobFile) TempFilePath() string {
 	os.MkdirAll("/tmp/valfs-blobs", 0755)
 	return fmt.Sprintf("/tmp/valfs-blobs/blob-%d", f.UUID)
@@ -171,13 +167,8 @@ func (f *BlobFile) Release(ctx context.Context, fh fs.FileHandle) syscall.Errno 
 
 	// Wait for the upload to finish
 	log.Printf("Waiting for upload to finish for %s", f.BlobListing.Key)
-	for f.uploadInProgress {
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	// Stop the write timeout timer
-	if f.writeTimer != nil {
-		f.writeTimer.Stop()
+	for !f.myBlobs.ongoingUploads.Has(f.BlobListing.Key) {
+		time.Sleep(ReleaseWaitInterval)
 	}
 
 	// Close and remove the temporary file
@@ -192,4 +183,76 @@ func (f *BlobFile) Release(ctx context.Context, fh fs.FileHandle) syscall.Errno 
 	}
 
 	return syscall.F_OK
+}
+
+// Write writes data to the tempfile at the specified offset, clobbering data
+// up until the length of the data after that offset. Then, it uploads the
+// entire file to valtown. If more data is subsequently written and happens to
+// be directly after the end of the data written in this write, it will be
+// added to the queue of data to be streamed to valtown, and a new connection
+// will not be made.
+func (f *BlobFile) Write(
+	ctx context.Context,
+	fh fs.FileHandle,
+	data []byte,
+	off int64,
+) (uint32, syscall.Errno) {
+	bfh := fh.(*BlobFileHandle)
+
+	log.Printf("Writing %d bytes at offset %d to %s", len(data), off, f.BlobListing.Key)
+
+	// Write data to the temporary file (our "source of truth")
+	wrote, err := bfh.file.WriteAt(data, off)
+	if err != nil {
+		log.Printf("Failed to write to temporary file for %s: %v", f.BlobListing.Key, err)
+		return 0, syscall.EIO
+	}
+
+	// If there is an upload in progress, check to see if the new data we are
+	// writing is directly after the data that is queued to be written, and if it
+	// is then add it to the pipe and return.
+	uploadData, ok := f.myBlobs.ongoingUploads.Get(f.BlobListing.Key)
+	if ok {
+		if off == uploadData.writePipeLastByteIndex { // Append data to the existing upload
+			common.ReportError("Appending %d bytes to existing upload for %s", err, wrote, f.BlobListing.Key)
+			err := uploadData.AddBytesToUpload(data)
+			if err != nil {
+				log.Printf("Failed to write to pipe for %s: %v", f.BlobListing.Key, err)
+				return 0, syscall.E2BIG
+			}
+
+			// Reset the write timeout timer
+			uploadData.ResetWriteTimeout()
+		} else {
+			// Cancel the ongoing update
+			log.Printf("Cancelling existing upload for %s", f.BlobListing.Key)
+			uploadData.uploadCancel()
+
+			// Initialize a new upload
+			_, err := f.newBlobUpload(off, data, bfh.file)
+			if err != nil {
+				common.ReportError("Failed to create new upload", err)
+				return 0, syscall.E2BIG
+			}
+		}
+	} else {
+		// Start a new upload
+		_, err := f.newBlobUpload(off, data, bfh.file)
+		if err != nil {
+			return 0, syscall.EIO
+		}
+	}
+
+	// Update file size
+	fileInfo, err := bfh.file.Stat()
+	if err != nil {
+		log.Printf("Failed to stat temporary file for %s: %v", f.BlobListing.Key, err)
+		return 0, syscall.EIO
+	}
+	f.BlobListing.SetSize(int32(fileInfo.Size()))
+	log.Printf("Successfully wrote %d bytes to %s", wrote, f.BlobListing.Key)
+	f.BlobListing.SetLastModified(time.Now())
+
+	// Say that we are done writing
+	return uint32(wrote), syscall.F_OK
 }

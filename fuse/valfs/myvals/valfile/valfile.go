@@ -25,6 +25,12 @@ type ValFile struct {
 	client       *common.Client
 }
 
+var _ = (fs.NodeSetattrer)((*ValFile)(nil))
+var _ = (fs.NodeGetattrer)((*ValFile)(nil))
+var _ = (fs.NodeWriter)((*ValFile)(nil))
+var _ = (fs.NodeOpener)((*ValFile)(nil))
+var _ = (fs.FileReader)((*ValFileHandle)(nil))
+
 // Get the extended val data for the val. If it is already a member of the
 // valfile then retreive it from cache. If it has not been fetched yet then
 // fetch it.
@@ -106,8 +112,6 @@ func (f *ValFile) ModifiedNow() {
 	f.ModifiedAt = time.Now()
 }
 
-var _ = (fs.NodeOpener)((*ValFile)(nil))
-
 // Get a file descriptor for a val file
 func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 	fh fs.FileHandle,
@@ -134,8 +138,6 @@ func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 	// Return FOPEN_DIRECT_IO so content is not cached
 	return fh, fuse.FOPEN_DIRECT_IO, syscall.F_OK
 }
-
-var _ = (fs.FileReader)((*ValFileHandle)(nil))
 
 // Provide the content of the val as the content of the file
 func (fh *ValFileHandle) Read(
@@ -164,8 +166,6 @@ func (fh *ValFileHandle) Read(
 	}
 	return fuse.ReadResultData(bytes[off:end]), syscall.F_OK
 }
-
-var _ = (fs.NodeWriter)((*ValFile)(nil))
 
 // Write data to a val file and the corresponding val
 func (c *ValFile) Write(
@@ -231,8 +231,6 @@ func (c *ValFile) Write(
 	return uint32(len(data)), syscall.F_OK
 }
 
-var _ = (fs.NodeGetattrer)((*ValFile)(nil))
-
 // Make sure the file is always read/write/executable even if changed
 func (f *ValFile) Getattr(
 	ctx context.Context,
@@ -271,8 +269,6 @@ func (f *ValFile) Getattr(
 
 	return syscall.F_OK
 }
-
-var _ = (fs.NodeSetattrer)((*ValFile)(nil))
 
 // Accept the request to change attrs, but ignore the new attrs, to comply with
 // editors expecting to be able to change them
