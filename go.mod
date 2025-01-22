@@ -4,10 +4,12 @@ go 1.22
 
 require (
 	github.com/404wolf/valgo v0.0.1
+	github.com/djherbis/buffer v1.2.0
+	github.com/djherbis/nio/v3 v3.0.1
 	github.com/goccy/go-yaml v1.15.13
-	github.com/google/uuid v1.6.0
 	github.com/hanwen/go-fuse/v2 v2.7.2
 	github.com/joho/godotenv v1.5.1
+	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.10.0
 	github.com/subosito/gozaru v0.0.0-20190625071150-416082cce636

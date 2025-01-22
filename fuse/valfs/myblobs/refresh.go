@@ -3,27 +3,24 @@ package fuse
 import (
 	"context"
 	"log"
-	"os"
-	"sync"
 	"syscall"
 
 	common "github.com/404wolf/valfs/common"
-	blobfile "github.com/404wolf/valfs/fuse/valfs/myblobs/blobfile"
 	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/subosito/gozaru"
 )
 
-var previousBlobKeys = make(map[string]*blobfile.BlobFile)
-
-// Refresh the list of blobs in the filesystem
+// refreshBlobs updates the filesystem with the latest blob information
+// It fetches the current list of blobs, adds new ones, updates existing ones,
+// and removes those that no longer exist
 func refreshBlobs(
 	ctx context.Context,
 	root *fs.Inode,
-	blobNameToKey *sync.Map,
-	client common.Client,
+	myBlobs *MyBlobs,
 ) error {
-	newBlobs, err := getMyBlobs(ctx, client)
+	// Fetch the latest list of blobs from the server
+	newBlobs, err := getMyBlobs(ctx, myBlobs.client)
 	if err != nil {
 		common.ReportError("Error fetching blobs", err)
 		return nil
@@ -31,57 +28,51 @@ func refreshBlobs(
 
 	log.Printf("Fetched %d blobs", len(newBlobs))
 
-	// Update or add new blobs
+	// Create a map to track blobs that still exist
+	stillExistingBlobs := make(map[string]bool)
+
+	// Iterate through the newly fetched blobs
 	for _, newBlob := range newBlobs {
-		// Previous blob keys is a decent source, but it's not perfect. It requires
-		// no IO, so we start with it.
-		if prevBlobFile, exists := previousBlobKeys[newBlob.Key]; exists {
-			// Now, we see if it exists in the file system (is being/was created)
-			_, err := os.Stat(prevBlobFile.TempFilePath())
-			if os.IsNotExist(err) {
-				// Update existing blob if it's newer
-				if newBlob.GetLastModified().After(prevBlobFile.BlobListing.GetLastModified()) {
-					prevBlobFile.BlobListing = newBlob
-					prevBlobFile.EmbeddedInode().Root().NotifyContent(0, 0)
-					log.Printf("Updated blob %s, found newer on valtown", newBlob.Key)
-				}
+		stillExistingBlobs[newBlob.Key] = true
+
+		existingBlobFile, exists := myBlobs.KnownBlobs.Get(newBlob.Key)
+		if exists {
+			// The blob already exists, check if it needs updating
+			if newBlob.GetLastModified().After(existingBlobFile.BlobListing.GetLastModified()) {
+				existingBlobFile.BlobListing = newBlob
+				root.GetChild(gozaru.Sanitize(newBlob.Key)).NotifyContent(0, 0)
+				log.Printf("Updated blob %s, found newer on valtown", newBlob.Key)
 			}
 		} else {
-			// Add new blob
-			blobFile := blobfile.NewBlobFileAuto(newBlob, &client)
+			// This is a new blob, add it to the filesystem
+			blobFile := NewBlobFileAuto(newBlob, myBlobs)
 			newInode := root.NewPersistentInode(ctx, blobFile, fs.StableAttr{Mode: syscall.S_IFREG})
 			sanitizedFilename := gozaru.Sanitize(newBlob.Key)
-			blobNameToKey.Store(sanitizedFilename, newBlob.Key)
 			root.AddChild(sanitizedFilename, newInode, true)
-			previousBlobKeys[newBlob.Key] = blobFile
+			myBlobs.KnownBlobs.Set(newBlob.Key, blobFile)
 			log.Printf("Added blob %s, found fresh on valtown", newBlob.Key)
 		}
 	}
 
-	// Remove blobs that no longer exist
-	for key := range previousBlobKeys {
-		found := false
-		for _, newBlob := range newBlobs {
-			if newBlob.Key == key {
-				found = true
-				break
-			}
-		}
-		if !found {
-			root.RmChild(key)
-			delete(previousBlobKeys, key)
-			blobNameToKey.Delete(gozaru.Sanitize(key))
+	// Check for blobs that no longer exist and remove them
+	myBlobs.KnownBlobs.IterCb(func(key string, value *BlobFile) {
+		if !stillExistingBlobs[key] {
+			// This blob no longer exists, remove it from the filesystem and map
+			root.RmChild(gozaru.Sanitize(key))
+			myBlobs.KnownBlobs.Remove(key)
 			log.Printf("Removed blob %s no longer found on valtown", key)
 		}
-	}
+	})
 
 	return nil
 }
 
-// Get a list of all the blobs belonging to the authed user
-func getMyBlobs(ctx context.Context, client common.Client) ([]valgo.BlobListingItem, error) {
+// getMyBlobs fetches the list of all blobs belonging to the authenticated user
+// It uses the provided client to make an API call to retrieve the blob listings
+func getMyBlobs(ctx context.Context, client *common.Client) ([]valgo.BlobListingItem, error) {
 	log.Println("Fetching all of my blobs")
 
+	// Make an API call to fetch the list of blobs
 	blobs, _, err := client.APIClient.BlobsAPI.BlobsList(ctx).Execute()
 	if err != nil {
 		return nil, err

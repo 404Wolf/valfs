@@ -155,29 +155,3 @@ func (v *ValPackage) UpdateVal(contents string) error {
 	return nil
 }
 
-// Guess the file name that a user intended to name a val. Often this is what
-// they named it, but sometimes they make typos. If they choose an invalid val
-// type, then autocorrect it to the default (e.g. Script val). Only opinionated
-// when the user isn't exact!
-func GuessFilename(guess string) (
-	hopeless bool,
-	valName *string,
-	valType *ValType,
-) {
-	// Parse the filename of the val
-	valNameAttempt, valTypeAttempt := ExtractFromFilename(guess)
-
-	// Try to guess the type if it is unknown
-	if valTypeAttempt == Unknown {
-		re := regexp.MustCompile(`^([^\.]+\.?)+\.tsx?`)
-		if re.MatchString(guess) {
-			valName = &re.FindStringSubmatch(guess)[1]
-			valTypeRef := DefaultType
-			return false, valName, &valTypeRef
-		} else {
-			return true, nil, nil
-		}
-	} else {
-		return false, &valNameAttempt, &valTypeAttempt
-	}
-}

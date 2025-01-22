@@ -5,26 +5,21 @@ import (
 	"errors"
 	"io"
 	"log"
-	"math/rand/v2"
 	"net/http"
-	"os"
 	"regexp"
 	"sync"
 	"syscall"
 	"time"
 
-	blobfile "github.com/404wolf/valfs/fuse/valfs/myblobs/blobfile"
 	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
+	cmap "github.com/orcaman/concurrent-map/v2"
 
 	common "github.com/404wolf/valfs/common"
 )
 
 const BLOB_REFRESH_INTERVAL = 5
-
-var blobUuidToKey sync.Map
-var blobNameToKey sync.Map
 
 var validFilenameRegex = regexp.MustCompile(`^[^\x00-\x1f/]+$`)
 
@@ -35,74 +30,71 @@ func validateName(filename string) bool {
 	return validFilenameRegex.MatchString(filename) && filename != "." && filename != ".."
 }
 
-// getKeyFromBlobName gets the key of the blob from the blob name
-func getKeyFromBlobName(name string) (*string, bool) {
-	key, ok := blobNameToKey.Load(name)
-	if !ok {
-		return nil, false
-	}
-	keyStr := key.(string)
-	return &keyStr, true
-}
-
 // The folder with all of my blobs in it
 type MyBlobs struct {
 	fs.Inode
-	client *common.Client
+
+	// All the current blobs that have been added to the MyBlobs folder. A
+	// mapping from the keys of the blobs to the actual BlobFiles.
+	KnownBlobs cmap.ConcurrentMap[string, *BlobFile]
+
+	// Maintain a list of all the ongoing uploads, to check if a given blob key
+	// is being uploaded
+	ongoingUploads cmap.ConcurrentMap[string, *BlobUpload]
+	client         *common.Client
 }
+
+var _ = (fs.NodeCreater)((*MyBlobs)(nil))
+var _ = (fs.NodeUnlinker)((*MyBlobs)(nil))
+var _ = (fs.NodeRenamer)((*MyBlobs)(nil))
 
 // Set up background refresh of blobs and retrieve an auto updating folder of
 // blob files
 func NewMyBlobs(parent *fs.Inode, client *common.Client, ctx context.Context) *MyBlobs {
-	myBlobsDir := &MyBlobs{
-		client: client,
+	myBlobs := &MyBlobs{
+		client:         client,
+		ongoingUploads: cmap.New[*BlobUpload](),
+		KnownBlobs:     cmap.New[*BlobFile](),
 	}
 	attrs := fs.StableAttr{Mode: syscall.S_IFDIR | 0555}
-	parent.NewInode(ctx, myBlobsDir, attrs)
+	parent.NewInode(ctx, myBlobs, attrs)
 
-	refreshBlobs(ctx, &myBlobsDir.Inode, &blobNameToKey, *client)
+	refreshBlobs(ctx, &myBlobs.Inode, myBlobs)
 	ticker := time.NewTicker(BLOB_REFRESH_INTERVAL * time.Second)
 	go func() {
 		for range ticker.C {
-			refreshBlobs(ctx, &myBlobsDir.Inode, &blobNameToKey, *client)
+			refreshBlobs(ctx, &myBlobs.Inode, myBlobs)
 			log.Println("Refreshed blobs")
 		}
 	}()
 
-	return myBlobsDir
+	return myBlobs
 }
-
-var _ = (fs.NodeUnlinker)((*MyBlobs)(nil))
 
 // Handle deletion of a file by also deleting the blob
 func (c *MyBlobs) Unlink(ctx context.Context, name string) syscall.Errno {
-	// Get the key of the blob
-	key, ok := getKeyFromBlobName(name)
+	blobFile, ok := c.KnownBlobs.Get(name)
 	if !ok {
 		return syscall.ENOENT
 	}
-	log.Printf("Deleting blob %s", *key)
+
+	key := blobFile.BlobListing.Key
+	log.Printf("Deleting blob %s", key)
 
 	// Attempt to delete the blob
-	_, err := c.client.APIClient.BlobsAPI.BlobsDelete(ctx, *key).Execute()
+	_, err := c.client.APIClient.BlobsAPI.BlobsDelete(ctx, key).Execute()
 	if err != nil {
-		log.Printf("Error deleting blob %s: %v", *key, err)
+		log.Printf("Error deleting blob %s: %v", key, err)
 		return syscall.EIO
 	} else {
-		log.Printf("Deleted blob %s", *key)
+		log.Printf("Deleted blob %s", key)
 	}
 
-	// Remove the blobFile from the map
-	uuid, ok := blobNameToKey.Load(name)
-	if !ok {
-		return syscall.EIO
-	}
-	blobUuidToKey.Delete(uuid.(string))
+	// Remove the blobFile from the maps
+	c.KnownBlobs.Remove(name)
 
 	return syscall.F_OK
 }
-
-var _ = (fs.NodeCreater)((*MyBlobs)(nil))
 
 // Create a new blob on new file creation
 func (c *MyBlobs) Create(
@@ -115,13 +107,8 @@ func (c *MyBlobs) Create(
 	if ok := validateName(name); !ok {
 		return nil, nil, 0, syscall.EINVAL
 	}
-	blobNameToKey.Store(name, name)
 
 	log.Printf("Creating blob %s", name)
-
-	// Determine the uuid for the new val file so we can create a temp file for
-	// it ahead of time
-	uuid := rand.Uint64()
 
 	// The val town API does not give us the blob listing after we make it so we
 	// guess what it would be instead of doing a second round trip
@@ -129,11 +116,13 @@ func (c *MyBlobs) Create(
 	blobListingItem.SetKey(name)
 	blobListingItem.SetSize(0)
 	blobListingItem.SetLastModified(time.Now().Add(-10 * time.Second))
-	blobFile := blobfile.NewBlobFile(*blobListingItem, c.client, uuid)
+	blobFile := NewBlobFile(*blobListingItem, c)
+
+	// Add the new blob to knownBlobs
+	c.KnownBlobs.Set(name, blobFile)
 
 	// Create the empty blob on valtown
-	tempFilePath := blobFile.TempFilePath()
-	file, err := os.OpenFile(tempFilePath, os.O_RDWR|os.O_CREATE, 0666)
+	tempFile, _, err := blobFile.EnsureTempFile()
 	if err != nil {
 		common.ReportError("Failed to open temporary file", err)
 		return nil, nil, 0, syscall.EIO
@@ -150,7 +139,7 @@ func (c *MyBlobs) Create(
 		ctx,
 		http.MethodPost,
 		"/v1/blob/"+name,
-		file,
+		tempFile,
 	)
 	if err != nil {
 		common.ReportError("Failed to create blob", err)
@@ -166,8 +155,10 @@ func (c *MyBlobs) Create(
 	return newInode, fileHandle, fuse.FOPEN_DIRECT_IO, syscall.F_OK
 }
 
-var _ = (fs.NodeRenamer)((*MyBlobs)(nil))
-
+// Rename the blob file. This simultaniously pulls the val from the valtown
+// blob api, and then pipes the output over to a differnet TCP socket where we
+// directly upload it to the api, but under a different key. If this succeeds
+// we then delete the old version.
 func (c *MyBlobs) Rename(
 	ctx context.Context,
 	oldName string,
@@ -187,20 +178,21 @@ func (c *MyBlobs) Rename(
 	}
 
 	// Update metadata for the blob (do book keeping)
-	oldKey, ok := getKeyFromBlobName(oldName)
+	blobFile, ok := c.KnownBlobs.Get(oldName)
 	if !ok {
 		common.ReportError("Blob not found", errors.New("Blob not found"))
 		return syscall.ENOENT
 	}
 
-	inode := c.GetChild(*oldKey)
+	oldKey := blobFile.BlobListing.Key
+
+	inode := c.GetChild(oldKey)
 	if inode == nil {
 		return syscall.ENOENT
 	}
-	blobFile := inode.Operations().(*blobfile.BlobFile)
 
 	// Start a transaction to do the rename
-	err := c.renameTransaction(ctx, oldKey, newName)
+	err := c.renameTransaction(ctx, &oldKey, newName)
 	if err != nil {
 		common.ReportError("Error renaming blob", err)
 		return syscall.EIO
@@ -209,9 +201,9 @@ func (c *MyBlobs) Rename(
 	// Update the local metadata
 	blobFile.BlobListing.Key = newName
 
-	// Update the name-to-key mapping
-	blobNameToKey.Delete(oldName)
-	blobNameToKey.Store(newName, newName)
+	// Update knownBlobs
+	c.KnownBlobs.Remove(oldName)
+	c.KnownBlobs.Set(newName, blobFile)
 
 	return syscall.F_OK
 }

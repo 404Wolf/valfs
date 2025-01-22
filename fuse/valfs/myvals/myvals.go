@@ -24,6 +24,10 @@ type MyVals struct {
 	client *common.Client
 }
 
+var _ = (fs.NodeRenamer)((*MyVals)(nil))
+var _ = (fs.NodeCreater)((*MyVals)(nil))
+var _ = (fs.NodeUnlinker)((*MyVals)(nil))
+
 // Set up background refresh of vals and retreive an auto updating folder of
 // val files
 func NewMyVals(parent *fs.Inode, client *common.Client, ctx context.Context) *MyVals {
@@ -44,8 +48,6 @@ func NewMyVals(parent *fs.Inode, client *common.Client, ctx context.Context) *My
 
 	return myValsDir
 }
-
-var _ = (fs.NodeUnlinker)((*MyVals)(nil))
 
 // Handle deletion of a file by also deleting the val
 func (c *MyVals) Unlink(ctx context.Context, name string) syscall.Errno {
@@ -70,8 +72,6 @@ func (c *MyVals) Unlink(ctx context.Context, name string) syscall.Errno {
 
 	return 0
 }
-
-var _ = (fs.NodeCreater)((*MyVals)(nil))
 
 // Create a new val on new file creation
 func (c *MyVals) Create(
@@ -121,8 +121,6 @@ func (c *MyVals) Create(
 	// Create a file handle
 	return newInode, &fileHandle, fuse.FOPEN_DIRECT_IO, syscall.F_OK
 }
-
-var _ = (fs.NodeRenamer)((*MyVals)(nil))
 
 // Rename a val, and change the name in valtown
 func (c *MyVals) Rename(

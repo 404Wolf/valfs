@@ -1,4 +1,4 @@
-valfs
+/valfs
 result
 .idea
 .vscode
@@ -6,4 +6,3 @@ tinkering
 tinker
 .env
 research
-./valfs
