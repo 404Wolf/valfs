@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/404wolf/valfs/common"
@@ -15,16 +16,16 @@ import (
 	"github.com/djherbis/nio/v3"
 )
 
-// ReleaseWaitInterval defines the interval at which the release function will
-// check if the upload has finished
-const ReleaseWaitInterval = 100 * time.Millisecond
-
 // WriteTimeout defines the duration of inactivity after which the write pipe
 // will be closed
-const WriteTimeout = 5 * time.Second
+const WriteTimeout = 15 * time.Second
+
+// UploadTimeout is the amount of time once the upload has been fully queued
+// that we are allowed to wait
+const UploadTimeout = 15 * time.Second
 
 // BufferSize defines the size of the buffer used for uploading
-const BufferSize = 10 * 1024 * 1024 // 5MB
+const BufferSize = 24 * 1024 * 1024 // 24MB
 
 // BlobUpload represents an ongoing upload of a blob file
 type BlobUpload struct {
@@ -34,6 +35,7 @@ type BlobUpload struct {
 	pipeReader     *nio.PipeReader
 	uploadCtx      context.Context
 	uploadCancel   context.CancelFunc
+	uploadLock     *sync.Mutex
 	endOfPipeIndex int64
 	writeTimer     *time.Timer
 	writeQueueLen  int64
@@ -89,6 +91,7 @@ func (f *BlobFile) NewBlobUpload(
 		pipeReader:     pipeReader,
 		uploadCtx:      uploadCtx,
 		uploadCancel:   uploadCancel,
+		uploadLock:     &sync.Mutex{},
 		endOfPipeIndex: off + int64(len(data)),
 		writeTimer:     nil,
 		writeQueueLen:  int64(len(data)), // Length of initial data
@@ -145,9 +148,28 @@ func (w *BlobUpload) AddBytesToUpload(data []byte) error {
 }
 
 func (w *BlobUpload) WaitForUpload() {
-	for w.BlobFile.myBlobs.ongoingUploads.Has(w.BlobFile.BlobListing.Key) {
-		w.ResetWriteTimeout()
-		time.Sleep(ReleaseWaitInterval)
+	if w.writeTimer != nil {
+		w.writeTimer.Stop()
+	}
+
+	// Close the pipe writer to signal no more data will be written
+	if w.pipeWriter != nil {
+		w.pipeWriter.Close()
+	}
+
+	// Wait for the upload to finish
+	done := make(chan struct{})
+	go func() {
+		w.uploadLock.Lock()
+		w.uploadLock.Unlock()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Upload finished
+	case <-time.After(UploadTimeout): // Timeout
+		log.Printf("Timeout waiting for upload of %s to finish", w.BlobFile.BlobListing.Key)
 	}
 }
 
@@ -185,16 +207,23 @@ func (w *BlobUpload) finishUpload() {
 	if w.pipeWriter != nil {
 		w.pipeWriter.Close()
 	}
+	if w.pipeReader != nil {
+		w.pipeReader.Close()
+	}
 
 	// Remove from the uploads map
 	if w.BlobFile.myBlobs.ongoingUploads.Has(w.BlobFile.BlobListing.Key) {
 		w.BlobFile.myBlobs.ongoingUploads.Remove(w.BlobFile.BlobListing.Key)
 	}
+
+	// Stop locking for the upload
+	w.uploadLock.Unlock()
 }
 
 // startUpload initiates the upload process for the file
 func (w *BlobUpload) startUpload() {
 	defer w.finishUpload()
+	w.uploadLock.Lock()
 
 	// Upload the file to the server
 	log.Printf("Uploading blob %s to server", w.BlobFile.BlobListing.Key)

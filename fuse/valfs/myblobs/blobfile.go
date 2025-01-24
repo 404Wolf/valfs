@@ -322,7 +322,7 @@ func (f *BlobFile) Write(
 		log.Printf("Failed to stat temporary file for %s: %v", f.BlobListing.Key, err)
 		return 0, syscall.EIO
 	}
-	f.BlobListing.SetSize(int32(fileInfo.Size()))
+	f.BlobListing.SetSize(fileInfo.Size())
 	f.BlobListing.SetLastModified(time.Now())
 
 	log.Printf("Successfully wrote %d bytes to %s", wrote, f.BlobListing.Key)
