@@ -1,6 +1,8 @@
 package fuse_test
 
 import (
+	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,12 +18,16 @@ func setupTest(t *testing.T) (*fuse.TestData, string) {
 	return fuse.SetupTest(t, dirName)
 }
 
+func generateRandomFileName(prefix string) string {
+	return fmt.Sprintf("%d%s", rand.Intn(999999), prefix)
+}
+
 func TestCreateFiles(t *testing.T) {
 	testData, blobDir := setupTest(t)
 	defer testData.Cleanup()
 
 	t.Run("Create first file", func(t *testing.T) {
-		fileName := fuse.GenerateRandomFileName("create1")
+		fileName := generateRandomFileName("create1")
 		filePath := filepath.Join(blobDir, fileName)
 
 		err := os.WriteFile(filePath, []byte("Content of file1"), 0644)
@@ -30,7 +36,7 @@ func TestCreateFiles(t *testing.T) {
 	})
 
 	t.Run("Create second file", func(t *testing.T) {
-		fileName := fuse.GenerateRandomFileName("create2")
+		fileName := generateRandomFileName("create2")
 		filePath := filepath.Join(blobDir, fileName)
 
 		err := os.WriteFile(filePath, []byte("Content of file2"), 0644)
@@ -44,7 +50,7 @@ func TestDeleteFiles(t *testing.T) {
 	defer testData.Cleanup()
 
 	t.Run("Delete first file", func(t *testing.T) {
-		fileName := fuse.GenerateRandomFileName("delete1")
+		fileName := generateRandomFileName("delete1")
 		filePath := filepath.Join(blobDir, fileName)
 
 		err := os.WriteFile(filePath, []byte("Content to be deleted"), 0644)
@@ -59,7 +65,7 @@ func TestDeleteFiles(t *testing.T) {
 	})
 
 	t.Run("Delete second file", func(t *testing.T) {
-		fileName := fuse.GenerateRandomFileName("delete2")
+		fileName := generateRandomFileName("delete2")
 		filePath := filepath.Join(blobDir, fileName)
 
 		err := os.WriteFile(filePath, []byte("Another content to be deleted"), 0644)
@@ -76,8 +82,8 @@ func TestRenameFiles(t *testing.T) {
 	defer testData.Cleanup()
 
 	t.Run("Rename first file", func(t *testing.T) {
-		originalName := fuse.GenerateRandomFileName("original1")
-		newName := fuse.GenerateRandomFileName("renamed1")
+		originalName := generateRandomFileName("original1")
+		newName := generateRandomFileName("renamed1")
 
 		originalPath := filepath.Join(blobDir, originalName)
 		newPath := filepath.Join(blobDir, newName)
@@ -93,8 +99,8 @@ func TestRenameFiles(t *testing.T) {
 	})
 
 	t.Run("Rename second file", func(t *testing.T) {
-		originalName := fuse.GenerateRandomFileName("original2")
-		newName := fuse.GenerateRandomFileName("renamed2")
+		originalName := generateRandomFileName("original2")
+		newName := generateRandomFileName("renamed2")
 
 		originalPath := filepath.Join(blobDir, originalName)
 		newPath := filepath.Join(blobDir, newName)
@@ -115,7 +121,7 @@ func TestReadFiles(t *testing.T) {
 	defer testData.Cleanup()
 
 	t.Run("Read first file", func(t *testing.T) {
-		fileName := fuse.GenerateRandomFileName("read1")
+		fileName := generateRandomFileName("read1")
 		filePath := filepath.Join(blobDir, fileName)
 		content := "Content to be read"
 
@@ -129,7 +135,7 @@ func TestReadFiles(t *testing.T) {
 	})
 
 	t.Run("Read second file", func(t *testing.T) {
-		fileName := fuse.GenerateRandomFileName("read2")
+		fileName := generateRandomFileName("read2")
 		filePath := filepath.Join(blobDir, fileName)
 		content := "Another content to be read"
 
@@ -148,7 +154,7 @@ func TestAppendToFiles(t *testing.T) {
 	defer testData.Cleanup()
 
 	t.Run("Append to first file", func(t *testing.T) {
-		fileName := fuse.GenerateRandomFileName("append1")
+		fileName := generateRandomFileName("append1")
 		filePath := filepath.Join(blobDir, fileName)
 		initialContent := "Initial content"
 		appendedContent := "Appended content"
@@ -171,7 +177,7 @@ func TestAppendToFiles(t *testing.T) {
 	})
 
 	t.Run("Append to second file", func(t *testing.T) {
-		fileName := fuse.GenerateRandomFileName("append2")
+		fileName := generateRandomFileName("append2")
 		filePath := filepath.Join(blobDir, fileName)
 		initialContent := "Another initial content"
 		appendedContent := "Another appended content"
@@ -194,7 +200,7 @@ func TestAppendToFiles(t *testing.T) {
 	})
 
 	t.Run("Append same content multiple times", func(t *testing.T) {
-		fileName := fuse.GenerateRandomFileName("append_same")
+		fileName := generateRandomFileName("append_same")
 		filePath := filepath.Join(blobDir, fileName)
 
 		content := "aaa\n"
@@ -211,7 +217,7 @@ func TestAppendToFiles(t *testing.T) {
 	})
 
 	t.Run("Append different content sequentially", func(t *testing.T) {
-		fileName := fuse.GenerateRandomFileName("append_diff")
+		fileName := generateRandomFileName("append_diff")
 		filePath := filepath.Join(blobDir, fileName)
 
 		contents := []string{"aaa\n", "bbb\n", "ccc\n"}
@@ -228,7 +234,7 @@ func TestAppendToFiles(t *testing.T) {
 	})
 
 	t.Run("Append empty string", func(t *testing.T) {
-		fileName := fuse.GenerateRandomFileName("append_empty")
+		fileName := generateRandomFileName("append_empty")
 		filePath := filepath.Join(blobDir, fileName)
 
 		initialContent := "Initial content\n"
@@ -245,7 +251,7 @@ func TestAppendToFiles(t *testing.T) {
 	})
 
 	t.Run("Append to non-existent file", func(t *testing.T) {
-		fileName := fuse.GenerateRandomFileName("append_nonexistent")
+		fileName := generateRandomFileName("append_nonexistent")
 		filePath := filepath.Join(blobDir, fileName)
 
 		content := "New content\n"

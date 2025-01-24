@@ -3,7 +3,6 @@ package fuse
 import (
 	"bufio"
 	"fmt"
-	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,11 +52,6 @@ func SetupTest(t *testing.T, dirName string) (*TestData, string) {
 	blobDir := filepath.Join(testData.MountPoint, dirName)
 
 	return &testData, blobDir
-}
-
-// generateRandomFileName generates a random file name with a given prefix
-func GenerateRandomFileName(prefix string) string {
-	return fmt.Sprintf("%d%s", rand.Intn(999999), prefix)
 }
 
 // SetupTests prepares the test environment and returns necessary data
