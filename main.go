@@ -12,13 +12,21 @@ import (
 func loadEnvFile() error {
 	err := godotenv.Load(".env")
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Println("Warning: Error loading .env file:", err)
 	}
+
 	value := os.Getenv("VAL_TOWN_API_KEY")
 	if value == "" {
-		fmt.Println("VAL_TOWN_API_KEY is not set")
+		value = os.Getenv("VAL_TOWN_API_KEY")
+		if value == "" {
+			return fmt.Errorf("VAL_TOWN_API_KEY is not set in .env file or environment variables")
+		}
+		fmt.Println("Using VAL_TOWN_API_KEY from environment variables")
+	} else {
+		fmt.Println("Using VAL_TOWN_API_KEY from .env file")
 	}
-	return err
+
+	return nil
 }
 
 func setup() {

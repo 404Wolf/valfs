@@ -65,10 +65,20 @@ func SetupTests(t *testing.T) TestData {
 	}
 
 	// Load environment variables from .env file
-	if err := godotenv.Load(filepath.Join(projectRoot, ".env")); err != nil {
-		t.Fatalf("Error loading .env file: %v", err)
+	err = godotenv.Load(filepath.Join(projectRoot, ".env"))
+	if err != nil {
+		// If .env file is not found, log a warning but continue
+		t.Logf("Warning: Error loading .env file: %v", err)
+		t.Log("Falling back to system environment variables")
 	}
 
+	// Check for required environment variables
+	requiredEnvVars := []string{"VAL_TOWN_API_KEY"} // Add other required variables here
+	for _, envVar := range requiredEnvVars {
+		if value := os.Getenv(envVar); value == "" {
+			t.Fatalf("Required environment variable %s is not set", envVar)
+		}
+	}
 	// Create a temporary directory for the test
 	testDir, err := os.MkdirTemp("", "valfs-tests-")
 	if err != nil {
