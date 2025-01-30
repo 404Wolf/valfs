@@ -243,6 +243,7 @@ func (f *BlobFile) Write(
 		}
 	} else {
 		// Step 2c: Start a new upload
+		bfh.file.Seek(0, 0)
 		if _, err := f.NewBlobUpload(off, data, bfh.file); err != nil {
 			common.ReportError("Failed to create new upload", err)
 			return 0, syscall.EIO
