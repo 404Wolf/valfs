@@ -118,6 +118,12 @@ func (f *BlobFile) Open(
 	// Log the attempt to open the blob file
 	log.Printf("Opening blob file %s", f.BlobListing.Key)
 
+	// Freeze if an upload is in progress
+	if f.myBlobs.ongoingUploads.Has(f.BlobListing.Key) {
+		upload, _ := f.myBlobs.ongoingUploads.Get(f.BlobListing.Key)
+		upload.WaitForUpload()
+	}
+
 	// Ensure a temporary file exists for this blob
 	file, existed, err := f.EnsureTempFile()
 	if err != nil {
