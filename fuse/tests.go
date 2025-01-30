@@ -125,7 +125,8 @@ func SetupTests(t *testing.T) TestData {
 	// Prepare cleanup function
 	cleanup := func() {
 		unmount()
-		os.RemoveAll(testDir)
+		os.RemoveAll(testDir + "/myblobs")
+		os.RemoveAll(testDir + "/myvals")
 	}
 
 	return TestData{

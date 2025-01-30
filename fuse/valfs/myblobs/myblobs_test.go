@@ -22,7 +22,7 @@ func generateRandomFileName(prefix string) string {
 	return fmt.Sprintf("%d%s", rand.Intn(999999), prefix)
 }
 
-func TestCreateFiles(t *testing.T) {
+func TestCreateBlobs(t *testing.T) {
 	testData, blobDir := setupTest(t)
 	defer testData.Cleanup()
 
@@ -45,7 +45,7 @@ func TestCreateFiles(t *testing.T) {
 	})
 }
 
-func TestDeleteFiles(t *testing.T) {
+func TestDeleteBlobs(t *testing.T) {
 	testData, blobDir := setupTest(t)
 	defer testData.Cleanup()
 
@@ -77,7 +77,7 @@ func TestDeleteFiles(t *testing.T) {
 	})
 }
 
-func TestRenameFiles(t *testing.T) {
+func TestRenameBlobs(t *testing.T) {
 	testData, blobDir := setupTest(t)
 	defer testData.Cleanup()
 
@@ -109,14 +109,14 @@ func TestRenameFiles(t *testing.T) {
 		require.NoError(t, err, "Failed to create original file")
 
 		err = os.Rename(originalPath, newPath)
-		require.NoError(t, err, "Failed to rename file")
+		require.NoError(t, err, "Failed to rename file from %s to %s", originalPath, newPath)
 
 		assert.FileExists(t, newPath, "Renamed file should exist")
 		assert.NoFileExists(t, originalPath, "Original file should not exist")
 	})
 }
 
-func TestReadFiles(t *testing.T) {
+func TestReadBlobs(t *testing.T) {
 	testData, blobDir := setupTest(t)
 	defer testData.Cleanup()
 
@@ -149,7 +149,7 @@ func TestReadFiles(t *testing.T) {
 	})
 }
 
-func TestAppendToFiles(t *testing.T) {
+func TestAppendToBlobs(t *testing.T) {
 	testData, blobDir := setupTest(t)
 	defer testData.Cleanup()
 
@@ -213,7 +213,7 @@ func TestAppendToFiles(t *testing.T) {
 		require.NoError(t, err, "Failed to read file")
 
 		// Check if only one instance of the content is present
-		assert.Equal(t, content, string(readContent), "File should contain only one instance of the content")
+		assert.Equal(t, "aaa\naaa\naaa\n", string(readContent), "File contents didn't match")
 	})
 
 	t.Run("Append different content sequentially", func(t *testing.T) {
@@ -230,7 +230,7 @@ func TestAppendToFiles(t *testing.T) {
 		require.NoError(t, err, "Failed to read file")
 
 		// Check if only the last appended content is present
-		assert.Equal(t, contents[len(contents)-1], string(readContent), "File should contain only the last appended content")
+		assert.Equal(t, "aaa\nbbb\nccc\n", string(readContent), "File contents didn't match")
 	})
 
 	t.Run("Append empty string", func(t *testing.T) {
@@ -263,7 +263,6 @@ func TestAppendToFiles(t *testing.T) {
 
 		assert.Equal(t, content, string(readContent), "File should be created with the appended content")
 	})
-
 }
 
 func appendToFile(filePath, content string) error {

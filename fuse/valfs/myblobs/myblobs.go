@@ -19,7 +19,8 @@ import (
 	common "github.com/404wolf/valfs/common"
 )
 
-const BLOB_REFRESH_INTERVAL = 5
+const BlobRefreshInterval = 5
+const BlobRequestTimeout = 5
 
 var validFilenameRegex = regexp.MustCompile(`^[^\x00-\x1f/]+$`)
 
@@ -60,7 +61,7 @@ func NewMyBlobs(parent *fs.Inode, client *common.Client, ctx context.Context) *M
 	parent.NewInode(ctx, myBlobs, attrs)
 
 	refreshBlobs(ctx, &myBlobs.Inode, myBlobs)
-	ticker := time.NewTicker(BLOB_REFRESH_INTERVAL * time.Second)
+	ticker := time.NewTicker(BlobRefreshInterval * time.Second)
 	go func() {
 		for range ticker.C {
 			refreshBlobs(ctx, &myBlobs.Inode, myBlobs)
@@ -82,7 +83,9 @@ func (c *MyBlobs) Unlink(ctx context.Context, name string) syscall.Errno {
 	log.Printf("Deleting blob %s", key)
 
 	// Attempt to delete the blob
-	_, err := c.client.APIClient.BlobsAPI.BlobsDelete(ctx, key).Execute()
+	reqCtx, cleanup := context.WithTimeout(ctx, 5*time.Second)
+	defer cleanup()
+	_, err := c.client.APIClient.BlobsAPI.BlobsDelete(reqCtx, key).Execute()
 	if err != nil {
 		log.Printf("Error deleting blob %s: %v", key, err)
 		return syscall.EIO
