@@ -18,6 +18,7 @@ type Client struct {
 	APIClient *APIClient
 	Started   time.Time
 	Id        uint64
+	Refresh   bool
 }
 
 type APIClient struct {
@@ -76,7 +77,7 @@ func (c *APIClient) RawRequest(
 	return client.Do(req)
 }
 
-func NewClient(apiKey string, ctx context.Context) *Client {
+func NewClient(apiKey string, ctx context.Context, refresh bool) *Client {
 	log.Printf("Creating new client")
 
 	apiClientConfig := valgo.NewConfiguration()
@@ -107,6 +108,7 @@ func NewClient(apiKey string, ctx context.Context) *Client {
 		User:      *user,
 		Started:   time.Now(),
 		Id:        rand.Uint64(),
+		Refresh:   refresh,
 	}
 
 	log.Printf("Client: %v", client)

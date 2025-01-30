@@ -16,6 +16,8 @@ var fuseCmd = &cobra.Command{
 	Short: "Fuse related actions",
 }
 
+var noRefresh bool
+
 var mountCmd = &cobra.Command{
 	Use:   "mount <directory>",
 	Short: "Mount your Vals to a directory",
@@ -26,7 +28,11 @@ var mountCmd = &cobra.Command{
 		// Create a root node
 		root := valfs.NewValFS(
 			directory,
-			common.NewClient(os.Getenv("VAL_TOWN_API_KEY"), context.Background()),
+			common.NewClient(
+				os.Getenv("VAL_TOWN_API_KEY"),
+				context.Background(),
+				!noRefresh, // Use the opposite of noRefresh
+			),
 		)
 
 		fmt.Println("Mounting ValFS file system at", directory)
@@ -37,6 +43,7 @@ var mountCmd = &cobra.Command{
 }
 
 func FuseInit() {
+	mountCmd.Flags().BoolVar(&noRefresh, "no-refresh", false, "Disable automatic refreshing")
 	fuseCmd.AddCommand(mountCmd)
 	rootCmd.AddCommand(mountCmd)
 	rootCmd.AddCommand(fuseCmd)

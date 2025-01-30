@@ -60,14 +60,16 @@ func NewMyBlobs(parent *fs.Inode, client *common.Client, ctx context.Context) *M
 	attrs := fs.StableAttr{Mode: syscall.S_IFDIR | 0555}
 	parent.NewInode(ctx, myBlobs, attrs)
 
-	refreshBlobs(ctx, &myBlobs.Inode, myBlobs)
-	ticker := time.NewTicker(BlobRefreshInterval * time.Second)
-	go func() {
-		for range ticker.C {
-			refreshBlobs(ctx, &myBlobs.Inode, myBlobs)
-			log.Println("Refreshed blobs")
-		}
-	}()
+	if client.Refresh {
+		refreshBlobs(ctx, &myBlobs.Inode, myBlobs)
+		ticker := time.NewTicker(BlobRefreshInterval * time.Second)
+		go func() {
+			for range ticker.C {
+				refreshBlobs(ctx, &myBlobs.Inode, myBlobs)
+				log.Println("Refreshed blobs")
+			}
+		}()
+	}
 
 	return myBlobs
 }

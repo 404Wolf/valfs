@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	fuse "github.com/404wolf/valfs/fuse"
 	"github.com/stretchr/testify/assert"
@@ -22,6 +23,10 @@ func generateRandomFileName(prefix string) string {
 	return fmt.Sprintf("%d%s", rand.Intn(999999), prefix)
 }
 
+func sleepAfterWrite() {
+	time.Sleep(500 * time.Millisecond)
+}
+
 func TestCreateBlobs(t *testing.T) {
 	testData, blobDir := setupTest(t)
 	defer testData.Cleanup()
@@ -32,6 +37,7 @@ func TestCreateBlobs(t *testing.T) {
 
 		err := os.WriteFile(filePath, []byte("Content of file1"), 0644)
 		require.NoError(t, err, "Failed to create file1")
+		sleepAfterWrite()
 		assert.FileExists(t, filePath, "file1 should exist")
 	})
 
@@ -41,6 +47,7 @@ func TestCreateBlobs(t *testing.T) {
 
 		err := os.WriteFile(filePath, []byte("Content of file2"), 0644)
 		require.NoError(t, err, "Failed to create file2")
+		sleepAfterWrite()
 		assert.FileExists(t, filePath, "file2 should exist")
 	})
 }
@@ -55,6 +62,7 @@ func TestDeleteBlobs(t *testing.T) {
 
 		err := os.WriteFile(filePath, []byte("Content to be deleted"), 0644)
 		require.NoError(t, err, "Failed to create file")
+		sleepAfterWrite()
 
 		_, err = os.Stat(filePath)
 		assert.NoError(t, err, "File should exist")
@@ -70,6 +78,7 @@ func TestDeleteBlobs(t *testing.T) {
 
 		err := os.WriteFile(filePath, []byte("Another content to be deleted"), 0644)
 		require.NoError(t, err, "Failed to create file")
+		sleepAfterWrite()
 
 		err = os.Remove(filePath)
 		require.NoError(t, err, "Failed to delete file")
@@ -90,6 +99,7 @@ func TestRenameBlobs(t *testing.T) {
 
 		err := os.WriteFile(originalPath, []byte("Content to be renamed"), 0644)
 		require.NoError(t, err, "Failed to create original file")
+		sleepAfterWrite()
 
 		err = os.Rename(originalPath, newPath)
 		require.NoError(t, err, "Failed to rename file")
@@ -107,6 +117,7 @@ func TestRenameBlobs(t *testing.T) {
 
 		err := os.WriteFile(originalPath, []byte("Another content to be renamed"), 0644)
 		require.NoError(t, err, "Failed to create original file")
+		sleepAfterWrite()
 
 		err = os.Rename(originalPath, newPath)
 		require.NoError(t, err, "Failed to rename file from %s to %s", originalPath, newPath)
@@ -127,6 +138,7 @@ func TestReadBlobs(t *testing.T) {
 
 		err := os.WriteFile(filePath, []byte(content), 0644)
 		require.NoError(t, err, "Failed to create file")
+		sleepAfterWrite()
 
 		readContent, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read file")
@@ -141,6 +153,7 @@ func TestReadBlobs(t *testing.T) {
 
 		err := os.WriteFile(filePath, []byte(content), 0644)
 		require.NoError(t, err, "Failed to create file")
+		sleepAfterWrite()
 
 		readContent, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read file")
@@ -161,6 +174,7 @@ func TestAppendToBlobs(t *testing.T) {
 
 		err := os.WriteFile(filePath, []byte(initialContent), 0644)
 		require.NoError(t, err, "Failed to create file")
+		sleepAfterWrite()
 
 		file, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0644)
 		require.NoError(t, err, "Failed to open file for appending")
@@ -168,6 +182,7 @@ func TestAppendToBlobs(t *testing.T) {
 
 		_, err = file.WriteString(appendedContent)
 		require.NoError(t, err, "Failed to append to file")
+		sleepAfterWrite()
 
 		readContent, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read file")
@@ -184,6 +199,7 @@ func TestAppendToBlobs(t *testing.T) {
 
 		err := os.WriteFile(filePath, []byte(initialContent), 0644)
 		require.NoError(t, err, "Failed to create file")
+		sleepAfterWrite()
 
 		file, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0644)
 		require.NoError(t, err, "Failed to open file for appending")
@@ -191,6 +207,7 @@ func TestAppendToBlobs(t *testing.T) {
 
 		_, err = file.WriteString(appendedContent)
 		require.NoError(t, err, "Failed to append to file")
+		sleepAfterWrite()
 
 		readContent, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read file")
@@ -207,6 +224,7 @@ func TestAppendToBlobs(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			err := appendToFile(filePath, content)
 			require.NoError(t, err, "Failed to append to file")
+			sleepAfterWrite()
 		}
 
 		readContent, err := os.ReadFile(filePath)
@@ -224,6 +242,7 @@ func TestAppendToBlobs(t *testing.T) {
 		for _, content := range contents {
 			err := appendToFile(filePath, content)
 			require.NoError(t, err, "Failed to append to file")
+			sleepAfterWrite()
 		}
 
 		readContent, err := os.ReadFile(filePath)
@@ -240,9 +259,11 @@ func TestAppendToBlobs(t *testing.T) {
 		initialContent := "Initial content\n"
 		err := os.WriteFile(filePath, []byte(initialContent), 0644)
 		require.NoError(t, err, "Failed to create file")
+		sleepAfterWrite()
 
 		err = appendToFile(filePath, "")
 		require.NoError(t, err, "Failed to append empty string")
+		sleepAfterWrite()
 
 		readContent, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read file")
@@ -257,6 +278,7 @@ func TestAppendToBlobs(t *testing.T) {
 		content := "New content\n"
 		err := appendToFile(filePath, content)
 		require.NoError(t, err, "Failed to append to non-existent file")
+		sleepAfterWrite()
 
 		readContent, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read file")

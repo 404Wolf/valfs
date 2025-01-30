@@ -37,14 +37,16 @@ func NewMyVals(parent *fs.Inode, client *common.Client, ctx context.Context) *My
 	attrs := fs.StableAttr{Mode: syscall.S_IFDIR | 0555}
 	parent.NewPersistentInode(ctx, myValsDir, attrs)
 
-	refreshVals(ctx, &myValsDir.Inode, *client)
-	ticker := time.NewTicker(VAL_REFRESH_INTERVAL * time.Second)
-	go func() {
-		for range ticker.C {
-			refreshVals(ctx, &myValsDir.Inode, *client)
-			log.Println("Refreshed vals")
-		}
-	}()
+	if client.Refresh {
+		refreshVals(ctx, &myValsDir.Inode, *client)
+		ticker := time.NewTicker(VAL_REFRESH_INTERVAL * time.Second)
+		go func() {
+			for range ticker.C {
+				refreshVals(ctx, &myValsDir.Inode, *client)
+				log.Println("Refreshed vals")
+			}
+		}()
+	}
 
 	return myValsDir
 }
