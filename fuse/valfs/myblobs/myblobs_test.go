@@ -24,7 +24,7 @@ func generateRandomFileName(prefix string) string {
 }
 
 func sleepAfterWrite() {
-	time.Sleep(4 * time.Second)
+	time.Sleep(6 * time.Second)
 }
 
 func TestCreateBlobs(t *testing.T) {
