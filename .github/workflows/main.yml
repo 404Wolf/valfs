@@ -23,6 +23,11 @@ jobs:
       - name: Build
         run: make
 
+      - name: Install Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: vx.x.x
+
       - name: Test
         run: make test
         env:
