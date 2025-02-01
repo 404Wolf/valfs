@@ -152,6 +152,11 @@ func (w *BlobUpload) WaitForUpload() {
 		w.writeTimer.Stop()
 	}
 
+	// Close the pipe writer to signal no more data will be written
+	if w.pipeWriter != nil {
+		w.pipeWriter.Close()
+	}
+
 	// Wait for the upload to finish
 	done := make(chan struct{})
 	go func() {

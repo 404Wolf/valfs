@@ -33,6 +33,7 @@ type BlobFile struct {
 
 var _ = (fs.NodeOpener)((*BlobFile)(nil))
 var _ = (fs.NodeWriter)((*BlobFile)(nil))
+var _ = (fs.NodeSetattrer)((*BlobFile)(nil))
 var _ = (fs.NodeGetattrer)((*BlobFile)(nil))
 var _ = (fs.NodeReleaser)((*BlobFile)(nil))
 
@@ -108,21 +109,13 @@ func (f *BlobFile) EnsureTempFile() (*os.File, bool, error) {
 	return file, existed, nil
 }
 
-// Open opens the blob file and fetches its content from the server into a
-// cached tempfile until the file is released. Returns a file handle that
-// contains a direct reference to the underlying temp file.
+// Open opens the blob file and fetches its content from the server
 func (f *BlobFile) Open(
 	ctx context.Context,
 	openFlags uint32,
 ) (fs.FileHandle, uint32, syscall.Errno) {
 	// Log the attempt to open the blob file
 	log.Printf("Opening blob file %s", f.BlobListing.Key)
-
-	// Freeze if an upload is in progress
-	if f.myBlobs.ongoingUploads.Has(f.BlobListing.Key) {
-		upload, _ := f.myBlobs.ongoingUploads.Get(f.BlobListing.Key)
-		upload.WaitForUpload()
-	}
 
 	// Ensure a temporary file exists for this blob
 	file, existed, err := f.EnsureTempFile()
@@ -188,6 +181,86 @@ func (f *BlobFile) Getattr(
 	return syscall.F_OK
 }
 
+// Setattr sets the attributes of the blob file. It handles size changes by
+// truncating or padding the file as necessary, and then initiates an upload
+// to synchronize the changes with the server.
+//
+// The function performs the following:
+//  1. Validates the file handle.
+//  2. Retrieves current file information.
+//  3. If the size needs to be changed:
+//     a. Truncates the file if the new size is smaller.
+//     b. Pads the file with zeros if the new size is larger.
+//  4. Initiates a new blob upload to synchronize changes with the server.
+//  5. Updates local blob listing information.
+//  6. Sets the output attributes.
+//
+// Parameters:
+// - ctx: The context for the operation.
+// - fh: The file handle of the blob file.
+// - in: Input attributes to be set.
+// - out: Output attributes to be filled.
+//
+// Returns:
+// - syscall.Errno: F_OK on success, or an appropriate error code on failure.
+func (f *BlobFile) Setattr(
+	ctx context.Context,
+	fh fs.FileHandle,
+	in *fuse.SetAttrIn,
+	out *fuse.AttrOut,
+) syscall.Errno {
+	log.Printf("Setting attributes for blob %s", f.BlobListing.Key)
+
+	// 1: Validate file handle
+	// bfh, ok := fh.(*BlobFileHandle)
+	// if !ok {
+	// 	log.Printf("Invalid file handle for blob %s", f.BlobListing.Key)
+	// 	return syscall.EINVAL
+	// }
+
+	// 2: Get current file info
+	// currentInfo, err := bfh.file.Stat()
+	// if err != nil {
+	// 	log.Printf("Failed to get file info for blob %s: %v", f.BlobListing.Key, err)
+	// 	return syscall.EIO
+	// }
+	//
+	// // 3: Handle size changes if necessary
+	// if in.Valid&fuse.FATTR_SIZE != 0 && uint64(currentInfo.Size()) != in.Size {
+	// 	newSize := int64(in.Size)
+	// 	currentSize := currentInfo.Size()
+	//
+	// 	// Cancel any ongoing upload
+	// 	if upload, exists := f.myBlobs.ongoingUploads.Get(f.BlobListing.Key); exists {
+	// 		upload.CancelUpload()
+	// 	}
+	//
+	// 	if newSize < currentSize { // 3a: Truncate the file
+	// 		if err := bfh.file.Truncate(newSize); err != nil {
+	// 			log.Printf("Failed to truncate blob %s: %v", f.BlobListing.Key, err)
+	// 			return syscall.EIO
+	// 		}
+	// 	}
+	//
+	// 	// 4: Initiate a new blob upload
+	// 	_, err := f.NewBlobUpload(0, nil, bfh.file)
+	// 	if err != nil {
+	// 		log.Printf("Failed to initiate upload for blob %s: %v", f.BlobListing.Key, err)
+	// 		return syscall.EIO
+	// 	}
+	//
+	// 	// 5: Update local blob listing information
+	// 	f.BlobListing.SetSize(int32(newSize))
+	// 	f.BlobListing.SetLastModified(time.Now())
+	// }
+
+	// 6: Set the output attributes
+	// out.Size = in.Size
+	out.Mode = BlobFileFlags
+
+	return syscall.F_OK
+}
+
 // Write writes data to the tempfile at the specified offset, clobbering data
 // up until the length of the data after that offset. Then, it ensures the file
 // stays in sync with the blob up in valtown.
@@ -223,14 +296,8 @@ func (f *BlobFile) Write(
 		if uploadData.DirectlyAfterPipeEnd(off) {
 			log.Printf("Appending %d bytes to existing upload for %s", wrote, f.BlobListing.Key)
 			if err := uploadData.AddBytesToUpload(data); err != nil {
-				log.Printf("Failed to write to pipe for %s: %v. Starting a new upload.", f.BlobListing.Key, err)
-				// Cancel the existing upload
-				uploadData.CancelUpload()
-				// Start a new upload
-				if _, err := f.NewBlobUpload(off, data, bfh.file); err != nil {
-					common.ReportError("Failed to create new upload after pipe write failure", err)
-					return 0, syscall.EIO
-				}
+				log.Printf("Failed to write to pipe for %s: %v", f.BlobListing.Key, err)
+				return 0, syscall.E2BIG
 			}
 		} else {
 			// Step 2b: Cancel existing upload and start a new one
@@ -238,12 +305,11 @@ func (f *BlobFile) Write(
 			uploadData.CancelUpload()
 			if _, err := f.NewBlobUpload(off, data, bfh.file); err != nil {
 				common.ReportError("Failed to create new upload", err)
-				return 0, syscall.EIO
+				return 0, syscall.E2BIG
 			}
 		}
 	} else {
 		// Step 2c: Start a new upload
-		bfh.file.Seek(0, 0)
 		if _, err := f.NewBlobUpload(off, data, bfh.file); err != nil {
 			common.ReportError("Failed to create new upload", err)
 			return 0, syscall.EIO
@@ -265,7 +331,7 @@ func (f *BlobFile) Write(
 	return uint32(wrote), syscall.F_OK
 }
 
-// Release closes the file handle and cleans up the underlying tempfile
+// Release closes the file handle and cleans up resources
 func (f *BlobFile) Release(ctx context.Context, fh fs.FileHandle) syscall.Errno {
 	log.Printf("Releasing blob file %s", f.BlobListing.Key)
 

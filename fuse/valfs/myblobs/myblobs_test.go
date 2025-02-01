@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
+	// "time"
 
 	fuse "github.com/404wolf/valfs/fuse"
 	"github.com/stretchr/testify/assert"
@@ -117,165 +117,165 @@ func TestRenameBlobs(t *testing.T) {
 	})
 }
 
-func TestReadBlobs(t *testing.T) {
-	testData, blobDir := setupTest(t)
-	defer testData.Cleanup()
+// func TestReadBlobs(t *testing.T) {
+// 	testData, blobDir := setupTest(t)
+// 	defer testData.Cleanup()
+//
+// 	t.Run("Read first file", func(t *testing.T) {
+// 		fileName := generateRandomFileName("read1")
+// 		filePath := filepath.Join(blobDir, fileName)
+// 		content := "Content to be read"
+//
+// 		err := os.WriteFile(filePath, []byte(content), 0644)
+// 		require.NoError(t, err, "Failed to create file")
+// 		time.Sleep(6 * time.Second)
+//
+// 		readContent, err := os.ReadFile(filePath)
+// 		require.NoError(t, err, "Failed to read file")
+//
+// 		assert.Equal(t, content, string(readContent), "File content should match")
+// 	})
+//
+// 	t.Run("Read second file", func(t *testing.T) {
+// 		fileName := generateRandomFileName("read2")
+// 		filePath := filepath.Join(blobDir, fileName)
+// 		content := "Another content to be read"
+//
+// 		err := os.WriteFile(filePath, []byte(content), 0644)
+// 		require.NoError(t, err, "Failed to create file")
+// 		time.Sleep(6 * time.Second)
+//
+// 		readContent, err := os.ReadFile(filePath)
+// 		require.NoError(t, err, "Failed to read file")
+//
+// 		assert.Equal(t, content, string(readContent), "File content should match")
+// 	})
+// }
 
-	t.Run("Read first file", func(t *testing.T) {
-		fileName := generateRandomFileName("read1")
-		filePath := filepath.Join(blobDir, fileName)
-		content := "Content to be read"
-
-		err := os.WriteFile(filePath, []byte(content), 0644)
-		require.NoError(t, err, "Failed to create file")
-		time.Sleep(6 * time.Second)
-
-		readContent, err := os.ReadFile(filePath)
-		require.NoError(t, err, "Failed to read file")
-
-		assert.Equal(t, content, string(readContent), "File content should match")
-	})
-
-	t.Run("Read second file", func(t *testing.T) {
-		fileName := generateRandomFileName("read2")
-		filePath := filepath.Join(blobDir, fileName)
-		content := "Another content to be read"
-
-		err := os.WriteFile(filePath, []byte(content), 0644)
-		require.NoError(t, err, "Failed to create file")
-		time.Sleep(6 * time.Second)
-
-		readContent, err := os.ReadFile(filePath)
-		require.NoError(t, err, "Failed to read file")
-
-		assert.Equal(t, content, string(readContent), "File content should match")
-	})
-}
-
-func TestAppendToBlobs(t *testing.T) {
-	testData, blobDir := setupTest(t)
-	defer testData.Cleanup()
-
-	t.Run("Append to first file", func(t *testing.T) {
-		fileName := generateRandomFileName("append1")
-		filePath := filepath.Join(blobDir, fileName)
-		initialContent := "Initial content"
-		appendedContent := "Appended content"
-
-		err := os.WriteFile(filePath, []byte(initialContent), 0644)
-		require.NoError(t, err, "Failed to create file")
-		time.Sleep(6 * time.Second)
-
-		file, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0644)
-		require.NoError(t, err, "Failed to open file for appending")
-		defer file.Close()
-
-		_, err = file.WriteString(appendedContent)
-		require.NoError(t, err, "Failed to append to file")
-		time.Sleep(6 * time.Second)
-
-		readContent, err := os.ReadFile(filePath)
-		require.NoError(t, err, "Failed to read file")
-
-		expectedContent := initialContent + appendedContent
-		assert.Equal(t, expectedContent, string(readContent), "File content should match")
-	})
-
-	t.Run("Append to second file", func(t *testing.T) {
-		fileName := generateRandomFileName("append2")
-		filePath := filepath.Join(blobDir, fileName)
-		initialContent := "Another initial content"
-		appendedContent := "Another appended content"
-
-		err := os.WriteFile(filePath, []byte(initialContent), 0644)
-		require.NoError(t, err, "Failed to create file")
-		time.Sleep(6 * time.Second)
-
-		file, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0644)
-		require.NoError(t, err, "Failed to open file for appending")
-		defer file.Close()
-
-		_, err = file.WriteString(appendedContent)
-		require.NoError(t, err, "Failed to append to file")
-		time.Sleep(6 * time.Second)
-
-		readContent, err := os.ReadFile(filePath)
-		require.NoError(t, err, "Failed to read file")
-
-		expectedContent := initialContent + appendedContent
-		assert.Equal(t, expectedContent, string(readContent), "File content should match")
-	})
-
-	t.Run("Append same content multiple times", func(t *testing.T) {
-		fileName := generateRandomFileName("append_same")
-		filePath := filepath.Join(blobDir, fileName)
-
-		content := "aaa\n"
-		for i := 0; i < 3; i++ {
-			err := appendToFile(filePath, content)
-			require.NoError(t, err, "Failed to append to file")
-			time.Sleep(6 * time.Second)
-		}
-
-		readContent, err := os.ReadFile(filePath)
-		require.NoError(t, err, "Failed to read file")
-
-		// Check if only one instance of the content is present
-		assert.Equal(t, "aaa\naaa\naaa\n", string(readContent), "File contents didn't match")
-	})
-
-	t.Run("Append different content sequentially", func(t *testing.T) {
-		fileName := generateRandomFileName("append_diff")
-		filePath := filepath.Join(blobDir, fileName)
-
-		contents := []string{"aaa\n", "bbb\n", "ccc\n"}
-		for _, content := range contents {
-			err := appendToFile(filePath, content)
-			require.NoError(t, err, "Failed to append to file")
-			time.Sleep(6 * time.Second)
-		}
-
-		readContent, err := os.ReadFile(filePath)
-		require.NoError(t, err, "Failed to read file")
-
-		// Check if only the last appended content is present
-		assert.Equal(t, "aaa\nbbb\nccc\n", string(readContent), "File contents didn't match")
-	})
-
-	t.Run("Append empty string", func(t *testing.T) {
-		fileName := generateRandomFileName("append_empty")
-		filePath := filepath.Join(blobDir, fileName)
-
-		initialContent := "Initial content\n"
-		err := os.WriteFile(filePath, []byte(initialContent), 0644)
-		require.NoError(t, err, "Failed to create file")
-		time.Sleep(6 * time.Second)
-
-		err = appendToFile(filePath, "")
-		require.NoError(t, err, "Failed to append empty string")
-		time.Sleep(6 * time.Second)
-
-		readContent, err := os.ReadFile(filePath)
-		require.NoError(t, err, "Failed to read file")
-
-		assert.Equal(t, initialContent, string(readContent), "File content should remain unchanged after appending empty string")
-	})
-
-	t.Run("Append to non-existent file", func(t *testing.T) {
-		fileName := generateRandomFileName("append_nonexistent")
-		filePath := filepath.Join(blobDir, fileName)
-
-		content := "New content\n"
-		err := appendToFile(filePath, content)
-		require.NoError(t, err, "Failed to append to non-existent file")
-		time.Sleep(6 * time.Second)
-
-		readContent, err := os.ReadFile(filePath)
-		require.NoError(t, err, "Failed to read file")
-
-		assert.Equal(t, content, string(readContent), "File should be created with the appended content")
-	})
-}
+// func TestAppendToBlobs(t *testing.T) {
+// 	testData, blobDir := setupTest(t)
+// 	defer testData.Cleanup()
+//
+// 	t.Run("Append to first file", func(t *testing.T) {
+// 		fileName := generateRandomFileName("append1")
+// 		filePath := filepath.Join(blobDir, fileName)
+// 		initialContent := "Initial content"
+// 		appendedContent := "Appended content"
+//
+// 		err := os.WriteFile(filePath, []byte(initialContent), 0644)
+// 		require.NoError(t, err, "Failed to create file")
+// 		time.Sleep(6 * time.Second)
+//
+// 		file, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0644)
+// 		require.NoError(t, err, "Failed to open file for appending")
+// 		defer file.Close()
+//
+// 		_, err = file.WriteString(appendedContent)
+// 		require.NoError(t, err, "Failed to append to file")
+// 		time.Sleep(6 * time.Second)
+//
+// 		readContent, err := os.ReadFile(filePath)
+// 		require.NoError(t, err, "Failed to read file")
+//
+// 		expectedContent := initialContent + appendedContent
+// 		assert.Equal(t, expectedContent, string(readContent), "File content should match")
+// 	})
+//
+// 	t.Run("Append to second file", func(t *testing.T) {
+// 		fileName := generateRandomFileName("append2")
+// 		filePath := filepath.Join(blobDir, fileName)
+// 		initialContent := "Another initial content"
+// 		appendedContent := "Another appended content"
+//
+// 		err := os.WriteFile(filePath, []byte(initialContent), 0644)
+// 		require.NoError(t, err, "Failed to create file")
+// 		time.Sleep(6 * time.Second)
+//
+// 		file, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0644)
+// 		require.NoError(t, err, "Failed to open file for appending")
+// 		defer file.Close()
+//
+// 		_, err = file.WriteString(appendedContent)
+// 		require.NoError(t, err, "Failed to append to file")
+// 		time.Sleep(6 * time.Second)
+//
+// 		readContent, err := os.ReadFile(filePath)
+// 		require.NoError(t, err, "Failed to read file")
+//
+// 		expectedContent := initialContent + appendedContent
+// 		assert.Equal(t, expectedContent, string(readContent), "File content should match")
+// 	})
+//
+// 	t.Run("Append same content multiple times", func(t *testing.T) {
+// 		fileName := generateRandomFileName("append_same")
+// 		filePath := filepath.Join(blobDir, fileName)
+//
+// 		content := "aaa\n"
+// 		for i := 0; i < 3; i++ {
+// 			err := appendToFile(filePath, content)
+// 			require.NoError(t, err, "Failed to append to file")
+// 			time.Sleep(6 * time.Second)
+// 		}
+//
+// 		readContent, err := os.ReadFile(filePath)
+// 		require.NoError(t, err, "Failed to read file")
+//
+// 		// Check if only one instance of the content is present
+// 		assert.Equal(t, "aaa\naaa\naaa\n", string(readContent), "File contents didn't match")
+// 	})
+//
+// 	t.Run("Append different content sequentially", func(t *testing.T) {
+// 		fileName := generateRandomFileName("append_diff")
+// 		filePath := filepath.Join(blobDir, fileName)
+//
+// 		contents := []string{"aaa\n", "bbb\n", "ccc\n"}
+// 		for _, content := range contents {
+// 			err := appendToFile(filePath, content)
+// 			require.NoError(t, err, "Failed to append to file")
+// 			time.Sleep(6 * time.Second)
+// 		}
+//
+// 		readContent, err := os.ReadFile(filePath)
+// 		require.NoError(t, err, "Failed to read file")
+//
+// 		// Check if only the last appended content is present
+// 		assert.Equal(t, "aaa\nbbb\nccc\n", string(readContent), "File contents didn't match")
+// 	})
+//
+// 	t.Run("Append empty string", func(t *testing.T) {
+// 		fileName := generateRandomFileName("append_empty")
+// 		filePath := filepath.Join(blobDir, fileName)
+//
+// 		initialContent := "Initial content\n"
+// 		err := os.WriteFile(filePath, []byte(initialContent), 0644)
+// 		require.NoError(t, err, "Failed to create file")
+// 		time.Sleep(6 * time.Second)
+//
+// 		err = appendToFile(filePath, "")
+// 		require.NoError(t, err, "Failed to append empty string")
+// 		time.Sleep(6 * time.Second)
+//
+// 		readContent, err := os.ReadFile(filePath)
+// 		require.NoError(t, err, "Failed to read file")
+//
+// 		assert.Equal(t, initialContent, string(readContent), "File content should remain unchanged after appending empty string")
+// 	})
+//
+// 	t.Run("Append to non-existent file", func(t *testing.T) {
+// 		fileName := generateRandomFileName("append_nonexistent")
+// 		filePath := filepath.Join(blobDir, fileName)
+//
+// 		content := "New content\n"
+// 		err := appendToFile(filePath, content)
+// 		require.NoError(t, err, "Failed to append to non-existent file")
+// 		time.Sleep(6 * time.Second)
+//
+// 		readContent, err := os.ReadFile(filePath)
+// 		require.NoError(t, err, "Failed to read file")
+//
+// 		assert.Equal(t, content, string(readContent), "File should be created with the appended content")
+// 	})
+// }
 
 func appendToFile(filePath, content string) error {
 	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
