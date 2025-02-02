@@ -154,4 +154,3 @@ func (v *ValPackage) UpdateVal(contents string) error {
 	// Success
 	return nil
 }
-

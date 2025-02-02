@@ -181,28 +181,7 @@ func (f *BlobFile) Getattr(
 	return syscall.F_OK
 }
 
-// Setattr sets the attributes of the blob file. It handles size changes by
-// truncating or padding the file as necessary, and then initiates an upload
-// to synchronize the changes with the server.
-//
-// The function performs the following:
-//  1. Validates the file handle.
-//  2. Retrieves current file information.
-//  3. If the size needs to be changed:
-//     a. Truncates the file if the new size is smaller.
-//     b. Pads the file with zeros if the new size is larger.
-//  4. Initiates a new blob upload to synchronize changes with the server.
-//  5. Updates local blob listing information.
-//  6. Sets the output attributes.
-//
-// Parameters:
-// - ctx: The context for the operation.
-// - fh: The file handle of the blob file.
-// - in: Input attributes to be set.
-// - out: Output attributes to be filled.
-//
-// Returns:
-// - syscall.Errno: F_OK on success, or an appropriate error code on failure.
+// Stub for nwo
 func (f *BlobFile) Setattr(
 	ctx context.Context,
 	fh fs.FileHandle,
@@ -211,51 +190,6 @@ func (f *BlobFile) Setattr(
 ) syscall.Errno {
 	log.Printf("Setting attributes for blob %s", f.BlobListing.Key)
 
-	// 1: Validate file handle
-	// bfh, ok := fh.(*BlobFileHandle)
-	// if !ok {
-	// 	log.Printf("Invalid file handle for blob %s", f.BlobListing.Key)
-	// 	return syscall.EINVAL
-	// }
-
-	// 2: Get current file info
-	// currentInfo, err := bfh.file.Stat()
-	// if err != nil {
-	// 	log.Printf("Failed to get file info for blob %s: %v", f.BlobListing.Key, err)
-	// 	return syscall.EIO
-	// }
-	//
-	// // 3: Handle size changes if necessary
-	// if in.Valid&fuse.FATTR_SIZE != 0 && uint64(currentInfo.Size()) != in.Size {
-	// 	newSize := int64(in.Size)
-	// 	currentSize := currentInfo.Size()
-	//
-	// 	// Cancel any ongoing upload
-	// 	if upload, exists := f.myBlobs.ongoingUploads.Get(f.BlobListing.Key); exists {
-	// 		upload.CancelUpload()
-	// 	}
-	//
-	// 	if newSize < currentSize { // 3a: Truncate the file
-	// 		if err := bfh.file.Truncate(newSize); err != nil {
-	// 			log.Printf("Failed to truncate blob %s: %v", f.BlobListing.Key, err)
-	// 			return syscall.EIO
-	// 		}
-	// 	}
-	//
-	// 	// 4: Initiate a new blob upload
-	// 	_, err := f.NewBlobUpload(0, nil, bfh.file)
-	// 	if err != nil {
-	// 		log.Printf("Failed to initiate upload for blob %s: %v", f.BlobListing.Key, err)
-	// 		return syscall.EIO
-	// 	}
-	//
-	// 	// 5: Update local blob listing information
-	// 	f.BlobListing.SetSize(int32(newSize))
-	// 	f.BlobListing.SetLastModified(time.Now())
-	// }
-
-	// 6: Set the output attributes
-	// out.Size = in.Size
 	out.Mode = BlobFileFlags
 
 	return syscall.F_OK
