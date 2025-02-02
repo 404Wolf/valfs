@@ -195,18 +195,10 @@ func (f *BlobFile) Setattr(
 	return syscall.F_OK
 }
 
-// Write writes data to the tempfile at the specified offset, clobbering data
-// up until the length of the data after that offset. Then, it ensures the file
-// stays in sync with the blob up in valtown.
-//
-// The flow of this function is as follows:
-//  1. Write data to the temporary file
-//  2. Check if there's an ongoing upload:
-//     a. If yes and new data is directly after existing data, append to the upload
-//     b. If yes but new data is not directly after, cancel existing upload and start a new one
-//     c. If no ongoing upload, start a new one
-//  3. Update file size and last modified time
-//  4. Return number of bytes written
+// Write writes data to the file at the specified offset. This makes a change
+// to the file, and then uploads the entire file. TODO, add piping so if you
+// write directly after a previous write that is still being uploaded, this
+// gets added to the queue for that socket.
 func (f *BlobFile) Write(
 	ctx context.Context,
 	fh fs.FileHandle,
@@ -214,8 +206,9 @@ func (f *BlobFile) Write(
 	off int64,
 ) (uint32, syscall.Errno) {
 	bfh := fh.(*BlobFileHandle)
+	log.Printf("Writing %d bytes at offset %d to %s", len(data), off, f.BlobListing.Key)
 
-	// Step 1: Write data to the temporary file (our "source of truth")
+	// Step 1: Write data to the temporary file
 	wrote, err := bfh.file.WriteAt(data, off)
 	if err != nil {
 		common.ReportError("Failed to write to temporary file for %s: %v", err, f.BlobListing.Key)
@@ -223,31 +216,10 @@ func (f *BlobFile) Write(
 	}
 	log.Printf("Wrote %d bytes at offset %d to %s", wrote, off, f.BlobListing.Key)
 
-	// Step 2: Handle ongoing uploads
-	uploadData, ok := f.myBlobs.ongoingUploads.Get(f.BlobListing.Key)
-	if ok {
-		// Step 2a: Append data to the existing upload if it comes directly after
-		if uploadData.DirectlyAfterPipeEnd(off) {
-			log.Printf("Appending %d bytes to existing upload for %s", wrote, f.BlobListing.Key)
-			if err := uploadData.AddBytesToUpload(data); err != nil {
-				log.Printf("Failed to write to pipe for %s: %v", f.BlobListing.Key, err)
-				return 0, syscall.E2BIG
-			}
-		} else {
-			// Step 2b: Cancel existing upload and start a new one
-			log.Printf("Cancelling existing upload for %s", f.BlobListing.Key)
-			uploadData.CancelUpload()
-			if _, err := f.NewBlobUpload(off, data, bfh.file); err != nil {
-				common.ReportError("Failed to create new upload", err)
-				return 0, syscall.E2BIG
-			}
-		}
-	} else {
-		// Step 2c: Start a new upload
-		if _, err := f.NewBlobUpload(off, data, bfh.file); err != nil {
-			common.ReportError("Failed to create new upload", err)
-			return 0, syscall.EIO
-		}
+	// Step 2: Upload the entire file content
+	if err := f.uploadEntireFile(ctx, bfh.file); err != nil {
+		common.ReportError("Failed to upload file for %s: %v", err, f.BlobListing.Key)
+		return 0, syscall.EIO
 	}
 
 	// Step 3: Update file size and last modified time
@@ -259,10 +231,34 @@ func (f *BlobFile) Write(
 	f.BlobListing.SetSize(fileInfo.Size())
 	f.BlobListing.SetLastModified(time.Now())
 
-	log.Printf("Successfully wrote %d bytes to %s", wrote, f.BlobListing.Key)
+	log.Printf("Successfully wrote and uploaded %d bytes to %s", wrote, f.BlobListing.Key)
 
-	// Step 4: Return number of bytes written
 	return uint32(wrote), syscall.F_OK
+}
+
+func (f *BlobFile) uploadEntireFile(ctx context.Context, file *os.File) error {
+	// Create a new file handle for uploading
+	uploadFile, err := os.Open(file.Name())
+	if err != nil {
+		return fmt.Errorf("failed to open file for upload: %w", err)
+	}
+	defer uploadFile.Close()
+
+	// Upload the file to the server
+	log.Printf("Uploading entire blob %s to server", f.BlobListing.Key)
+	_, err = f.myBlobs.client.APIClient.RawRequest(
+		ctx,
+		http.MethodPost,
+		"/v1/blob/"+f.BlobListing.Key,
+		uploadFile,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to upload file: %w", err)
+	}
+
+	log.Printf("Successfully uploaded entire file %s", f.BlobListing.Key)
+	return nil
 }
 
 // Release closes the file handle and cleans up resources
@@ -271,13 +267,8 @@ func (f *BlobFile) Release(ctx context.Context, fh fs.FileHandle) syscall.Errno 
 
 	// Wait for the upload to finish
 	log.Printf("Waiting for upload to finish for %s", f.BlobListing.Key)
-	uploadData, ok := f.myBlobs.ongoingUploads.Get(f.BlobListing.Key)
-	if ok {
-		uploadData.WaitForUpload()
-	}
-
-	log.Printf("Removed temporary file %s", f.tempFilePath())
 	f.RemoveTempFile()
+	log.Printf("Removed temporary file %s", f.tempFilePath())
 
 	return syscall.F_OK
 }
