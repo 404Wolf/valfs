@@ -38,7 +38,11 @@ type MyBlobs struct {
 	// All the current blobs that have been added to the MyBlobs folder. A
 	// mapping from the keys of the blobs to the actual BlobFiles.
 	KnownBlobs cmap.ConcurrentMap[string, *BlobFile]
-	client     *common.Client
+
+	// Maintain a list of all the ongoing uploads, to check if a given blob key
+	// is being uploaded
+	ongoingUploads cmap.ConcurrentMap[string, *BlobUpload]
+	client         *common.Client
 }
 
 var _ = (fs.NodeCreater)((*MyBlobs)(nil))
@@ -49,8 +53,9 @@ var _ = (fs.NodeRenamer)((*MyBlobs)(nil))
 // blob files
 func NewMyBlobs(parent *fs.Inode, client *common.Client, ctx context.Context) *MyBlobs {
 	myBlobs := &MyBlobs{
-		client:     client,
-		KnownBlobs: cmap.New[*BlobFile](),
+		client:         client,
+		ongoingUploads: cmap.New[*BlobUpload](),
+		KnownBlobs:     cmap.New[*BlobFile](),
 	}
 	attrs := fs.StableAttr{Mode: syscall.S_IFDIR | 0555}
 	parent.NewInode(ctx, myBlobs, attrs)
