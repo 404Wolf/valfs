@@ -7,7 +7,7 @@ on:
     branches: ["main"]
 
 jobs:
-  build:
+  test-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,15 +17,36 @@ jobs:
         with:
           go-version: "1.22"
 
-      - name: Build
-        run: make
+      - name: Install Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: vx.x.x
+
+      - name: Test with retry (Linux)
+        uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: make test
+        env:
+          VAL_TOWN_API_KEY: ${{ secrets.VAL_TOWN_API_KEY }}
+
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.22"
 
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
           deno-version: vx.x.x
 
-      - name: Test with retry
+      - name: Test with retry (macOS)
         uses: nick-invision/retry@v2
         with:
           timeout_minutes: 10
@@ -35,11 +56,22 @@ jobs:
           VAL_TOWN_API_KEY: ${{ secrets.VAL_TOWN_API_KEY }}
 
   create-release:
-    needs: build
+    needs: [test-linux, test-macos]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.22"
+
+      - name: Build Linux binary
+        run: GOOS=linux GOARCH=amd64 go build -o valtown-cli-linux-amd64
+
+      - name: Build Mac binary
+        run: GOOS=darwin GOARCH=amd64 go build -o valtown-cli-darwin-amd64
 
       - name: Create Release
         id: create_release
@@ -51,3 +83,23 @@ jobs:
           release_name: Release ${{ github.ref }}
           draft: true
           prerelease: false
+
+      - name: Upload Linux Binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./valtown-cli-linux-amd64
+          asset_name: valtown-cli-linux-amd64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Mac Binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./valtown-cli-darwin-amd64
+          asset_name: valtown-cli-darwin-amd64
+          asset_content_type: application/octet-stream
