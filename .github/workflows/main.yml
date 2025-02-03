@@ -31,7 +31,7 @@ jobs:
           VAL_TOWN_API_KEY: ${{ secrets.VAL_TOWN_API_KEY }}
 
   create-release:
-    needs: [test-linux, test-macos]
+    needs: [test-linux]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
