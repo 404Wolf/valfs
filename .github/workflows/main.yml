@@ -35,17 +35,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install FUSE-T
+      - name: Install MacFuse
         run: |
-          brew tap macos-fuse-t/homebrew-cask
-          brew install fuse-t
-          if brew list fuse-t &>/dev/null; then
-            echo "FUSE-T was successfully installed"
-          else
-            echo "FUSE-T installation failed"
-            exit 1
-          fi
-        continue-on-error: false
+          brew install --cask macfuse
+          /usr/bin/sudo /usr/bin/kmutil load -p /Library/Filesystems/macfuse.fs/Contents/Extensions/15/macfuse.kext
 
       - name: Set up Go
         uses: actions/setup-go@v4
