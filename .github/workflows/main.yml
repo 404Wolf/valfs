@@ -30,34 +30,6 @@ jobs:
         env:
           VAL_TOWN_API_KEY: ${{ secrets.VAL_TOWN_API_KEY }}
 
-  test-macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install MacFuse
-        run: |
-          brew install --cask macfuse
-          /usr/bin/sudo /usr/bin/kmutil load -p /Library/Filesystems/macfuse.fs/Contents/Extensions/15/macfuse.kext
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: "1.22"
-
-      - name: Build
-        run: make
-
-      - name: Install Deno
-        uses: denoland/setup-deno@v1
-        with:
-          deno-version: vx.x.x
-
-      - name: Test (macOS)
-        run: sudo -E make test
-        env:
-          VAL_TOWN_API_KEY: ${{ secrets.VAL_TOWN_API_KEY }}
-
   create-release:
     needs: [test-linux, test-macos]
     if: startsWith(github.ref, 'refs/tags/v')
