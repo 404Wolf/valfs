@@ -17,17 +17,16 @@ jobs:
         with:
           go-version: "1.22"
 
+      - name: Build
+        run: make
+
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
           deno-version: vx.x.x
 
-      - name: Test with retry (Linux)
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          command: make test
+      - name: Test (Linux)
+        run: make test
         env:
           VAL_TOWN_API_KEY: ${{ secrets.VAL_TOWN_API_KEY }}
 
@@ -41,17 +40,16 @@ jobs:
         with:
           go-version: "1.22"
 
+      - name: Build
+        run: make
+
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
           deno-version: vx.x.x
 
-      - name: Test with retry (macOS)
-        uses: nick-invision/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          command: make test
+      - name: Test (macOS)
+        run: make test
         env:
           VAL_TOWN_API_KEY: ${{ secrets.VAL_TOWN_API_KEY }}
 
@@ -68,10 +66,10 @@ jobs:
           go-version: "1.22"
 
       - name: Build Linux binary
-        run: GOOS=linux GOARCH=amd64 go build -o valtown-cli-linux-amd64
+        run: GOOS=linux GOARCH=amd64 go build -o valfs-linux-amd64
 
       - name: Build Mac binary
-        run: GOOS=darwin GOARCH=amd64 go build -o valtown-cli-darwin-amd64
+        run: GOOS=darwin GOARCH=amd64 go build -o valfs-darwin-amd64
 
       - name: Create Release
         id: create_release
@@ -90,8 +88,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./valtown-cli-linux-amd64
-          asset_name: valtown-cli-linux-amd64
+          asset_path: ./valfs-linux-amd64
+          asset_name: valfs-linux-amd64
           asset_content_type: application/octet-stream
 
       - name: Upload Mac Binary
@@ -100,6 +98,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./valtown-cli-darwin-amd64
-          asset_name: valtown-cli-darwin-amd64
+          asset_path: ./valfs-darwin-amd64
+          asset_name: valfs-darwin-amd64
           asset_content_type: application/octet-stream
