@@ -35,6 +35,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install MacFuse
+        run: brew install --cask macfuse
+
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
