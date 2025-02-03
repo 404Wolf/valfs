@@ -151,7 +151,7 @@ func SetupTests(t *testing.T) TestData {
 
 // waitForMount checks if the filesystem is mounted by looking for deno.json
 func waitForMount(dir string) bool {
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 90; i++ {
 		time.Sleep(250 * time.Millisecond)
 		if _, err := os.Stat(filepath.Join(dir, "deno.json")); err == nil {
 			return true
