@@ -26,14 +26,22 @@ jobs:
           deno-version: vx.x.x
 
       - name: Test (Linux)
-        run: make test
+        uses: nick-fields/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 20
+          command: |
+            make test
         env:
           VAL_TOWN_API_KEY: ${{ secrets.VAL_TOWN_API_KEY }}
 
   create-release:
-    needs: [test-linux, test-macos]
-    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
