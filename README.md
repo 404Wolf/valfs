@@ -16,7 +16,7 @@ Next, ensure you have deno installed.
 Finally, run
 
 ```
-./valfs -- mount ./valfsDir
+./valfs mount ./valfsDir
 ```
 
 Now all your vals should show up as `.tsx` files under `./myvals`. You can:
