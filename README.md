@@ -144,12 +144,6 @@ Some of the TODOs hinge on Val Town improving their API and exposing more functi
 - rename
 - move (out of folder)
 
-## ValFS Operations
-- deno.json automatic caching
-
-## Bugs
-- creating vals when vals already exist with that name causes them to have an automatic name (maybe this is ok)
-
 ## Configuration
 Add options for:
 - whether files should be executable
@@ -161,5 +155,3 @@ Add options for:
   generate the lock file (with HTTP val wrapper + `Deno.readTextFile()` on
   lockfile)
 
-## Blobs
-- Blobs work using loopback with temp files. I want to automatically clean the temp files on exit
