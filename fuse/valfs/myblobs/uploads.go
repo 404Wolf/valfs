@@ -31,6 +31,7 @@ const BufferSize = 24 * 1024 * 1024 // 24MB
 type BlobUpload struct {
 	BlobFile *BlobFile
 
+	ongoing        bool
 	pipeWriter     *nio.PipeWriter
 	pipeReader     *nio.PipeReader
 	uploadCtx      context.Context
@@ -41,101 +42,152 @@ type BlobUpload struct {
 	writeQueueLen  int64
 }
 
+// Ongoing returns whether the upload is currently ongoing
+func (f *BlobUpload) Ongoing() bool {
+	return f.ongoing
+}
+
 // GetWriteQueueLen returns the current length of the write queue
 func (w *BlobUpload) GetWriteQueueLen() int64 {
 	return w.writeQueueLen
 }
 
-// EndOfPipeIndex is the offset of the last byte in the pipe relative to where
-// the byte is in the file. If you are writing more data to the pipe directly,
-// you want to make sure that your data comes directly after the
-// EndOfPipeIndex.
+// DirectlyAfterPipeEnd checks if the provided offset is directly after the current pipe end
 func (f *BlobUpload) DirectlyAfterPipeEnd(off int64) bool {
 	return off == f.endOfPipeIndex
 }
 
-// NewBlobUpload initializes a new upload process for the blob file. It sets up
-// the necessary components for streaming modified data and starts the upload.
-// Once this has been called, and once f.UploadInProgress is true, then you can
-// write to f.pipeWriter directly, and that data will get streamed to the server
-// after whatever data is streamed initially.
-func (f *BlobFile) NewBlobUpload(
-	off int64,
-	data []byte,
-	file *os.File,
-) (*BlobUpload, error) {
-	log.Printf("Initializing new upload for %s", f.BlobListing.Key)
+// Start initiates the upload process
+func (w *BlobUpload) Start() error {
+	log.Printf("Starting upload for %s", w.BlobFile.Meta.Key)
 
 	// Create a new buffered pipe
 	buf := buffer.New(BufferSize)
 	pipeReader, pipeWriter := nio.Pipe(buf)
 
-	// Create the modified content reader
-	newData, err := createModifiedContentReader(file, off, data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create modified content reader: %w", err)
-	}
-
 	// Create a new context for the upload operation
 	uploadCtx, uploadCancel := context.WithCancel(context.Background())
 
-	// Put the initial data into the read pipe, and then start the upload
-	// process. The upload process will read out of this pipe.
-	go io.Copy(pipeWriter, newData)
+	w.pipeReader = pipeReader
+	w.pipeWriter = pipeWriter
+	w.uploadCtx = uploadCtx
+	w.uploadCancel = uploadCancel
+	w.ongoing = true
+	w.uploadLock = &sync.Mutex{}
 
-	// Start the upload
-	newBlobUpload := &BlobUpload{
-		BlobFile: f,
+	// Start the upload process
+	go func() {
+		defer w.finishUpload()
+		w.uploadLock.Lock()
 
-		pipeWriter:     pipeWriter,
-		pipeReader:     pipeReader,
-		uploadCtx:      uploadCtx,
-		uploadCancel:   uploadCancel,
-		uploadLock:     &sync.Mutex{},
-		endOfPipeIndex: off + int64(len(data)),
-		writeTimer:     nil,
-		writeQueueLen:  int64(len(data)), // Length of initial data
-	}
-	f.myBlobs.ongoingUploads.Set(f.BlobListing.Key, newBlobUpload)
+		log.Printf("Uploading blob %s to server", w.BlobFile.Meta.Key)
+		_, err := w.BlobFile.myBlobs.client.APIClient.RawRequest(
+			w.uploadCtx,
+			http.MethodPost,
+			"/v1/blob/"+w.BlobFile.Meta.Key,
+			w.pipeReader,
+		)
 
-	// Create the upload object, then set it to be the new upload object
-	go newBlobUpload.startUpload()
+		if err != nil {
+			common.ReportError("Failed to upload file %v", err, w.BlobFile.Meta.Key)
+		} else {
+			log.Printf("Successfully uploaded file %s", w.BlobFile.Meta.Key)
+		}
+	}()
 
-	return newBlobUpload, nil
+	return nil
 }
 
-// ResetWriteTimeout resets the write timeout timer This function should be
-// called after each successful write operation
+// Write handles writing data at the specified offset
+func (w *BlobUpload) Write(off int64, data []byte) error {
+	if !w.ongoing {
+		return fmt.Errorf("upload not ongoing")
+	}
+
+	// If the write is directly after the current pipe end, we can just append
+	if w.DirectlyAfterPipeEnd(off) {
+		return w.AddBytesToUpload(data)
+	}
+
+	// Otherwise, we need to create a new upload with the modified content
+	file, err := os.Open(w.BlobFile.Meta.Key)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	modifiedContent, err := createModifiedContentReader(file, off, data)
+	if err != nil {
+		return fmt.Errorf("failed to create modified content: %w", err)
+	}
+
+	// Copy the modified content to the pipe
+	go io.Copy(w.pipeWriter, modifiedContent)
+
+	w.endOfPipeIndex = off + int64(len(data))
+	w.writeQueueLen += int64(len(data))
+	w.ResetWriteTimeout()
+
+	return nil
+}
+
+// ResetWriteTimeout resets the write timeout timer
 func (w *BlobUpload) ResetWriteTimeout() {
-	// Stop the existing timer if it's running
 	if w.writeTimer != nil {
 		w.writeTimer.Stop()
 	}
 
-	// Start a new timer
 	w.writeTimer = time.AfterFunc(WriteTimeout, func() {
 		if w.pipeWriter != nil {
-			log.Printf("Write timeout reached for %s, closing pipe", w.BlobFile.BlobListing.Key)
+			log.Printf("Write timeout reached for %s, closing pipe", w.BlobFile.Meta.Key)
 			w.pipeWriter.Close()
-		} else {
-			w.writeTimer.Stop() // Kill the old timer
 		}
 	})
 }
 
-// CancelUpload cancels the upload operation and cleans up the resources
-func (w *BlobUpload) CancelUpload() {
-	if w.BlobFile.myBlobs.ongoingUploads.Has(w.BlobFile.BlobListing.Key) {
-		w.BlobFile.myBlobs.ongoingUploads.Remove(w.BlobFile.BlobListing.Key)
-	}
-
+// Cancel cancels the upload operation and cleans up resources
+func (w *BlobUpload) Cancel() {
+	w.ongoing = false
 	if w.uploadCancel != nil {
 		w.uploadCancel()
 	}
+	if w.writeTimer != nil {
+		w.writeTimer.Stop()
+	}
+	if w.pipeWriter != nil {
+		w.pipeWriter.Close()
+	}
+	if w.pipeReader != nil {
+		w.pipeReader.Close()
+	}
 }
 
-// AddBytesToUpload adds the provided bytes to the upload pipe. This function
-// is used to add data to an ongoing upload operation.
+// Finish waits for the upload to complete or timeout
+func (w *BlobUpload) Finish() {
+	if w.writeTimer != nil {
+		w.writeTimer.Stop()
+	}
+
+	if w.pipeWriter != nil {
+		w.pipeWriter.Close()
+	}
+
+	done := make(chan struct{})
+	go func() {
+		w.uploadLock.Lock()
+		w.uploadLock.Unlock()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Upload finished
+	case <-time.After(UploadTimeout):
+		log.Printf("Timeout waiting for upload of %s to finish", w.BlobFile.Meta.Key)
+	}
+}
+
+// AddBytesToUpload adds bytes to the upload pipe
 func (w *BlobUpload) AddBytesToUpload(data []byte) error {
 	w.ResetWriteTimeout()
 	_, err := w.pipeWriter.Write(data)
@@ -147,97 +199,32 @@ func (w *BlobUpload) AddBytesToUpload(data []byte) error {
 	return nil
 }
 
-func (w *BlobUpload) WaitForUpload() {
-	if w.writeTimer != nil {
-		w.writeTimer.Stop()
-	}
-
-	// Close the pipe writer to signal no more data will be written
-	if w.pipeWriter != nil {
-		w.pipeWriter.Close()
-	}
-
-	// Wait for the upload to finish
-	done := make(chan struct{})
-	go func() {
-		w.uploadLock.Lock()
-		w.uploadLock.Unlock()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// Upload finished
-	case <-time.After(UploadTimeout): // Timeout
-		log.Printf("Timeout waiting for upload of %s to finish", w.BlobFile.BlobListing.Key)
-	}
-}
-
 // createModifiedContentReader creates a MultiReader that combines the original file content
-// with the new data to be inserted at the specified offset.
+// with the new data to be inserted at the specified offset
 func createModifiedContentReader(file *os.File, off int64, data []byte) (io.Reader, error) {
-	// Get file information to determine its size
 	fileInfo, err := file.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
 	fileSize := fileInfo.Size()
 
-	// Create readers for each part of the modified content
 	readers := []io.Reader{
-		// Data before the insertion point
 		io.NewSectionReader(file, 0, off),
-
-		// New data to be inserted
 		bytes.NewReader(data),
-
-		// Data after the insertion point (if any)
 		io.NewSectionReader(file, off+int64(len(data)), fileSize-off-int64(len(data))),
 	}
 
-	// Combine all readers into a single MultiReader
 	return io.MultiReader(readers...), nil
 }
 
-// finishUpload gracefully finishes the upload process, allowing the data that
-// has been streamed so far to make it to valtown, and then cleans up
-// resources and does basic bookeeping.
+// finishUpload handles cleanup after upload completion
 func (w *BlobUpload) finishUpload() {
-	// Close the write pipe to signal the end of the upload
 	if w.pipeWriter != nil {
 		w.pipeWriter.Close()
 	}
 	if w.pipeReader != nil {
 		w.pipeReader.Close()
 	}
-
-	// Remove from the uploads map
-	if w.BlobFile.myBlobs.ongoingUploads.Has(w.BlobFile.BlobListing.Key) {
-		w.BlobFile.myBlobs.ongoingUploads.Remove(w.BlobFile.BlobListing.Key)
-	}
-
-	// Stop locking for the upload
+	w.ongoing = false
 	w.uploadLock.Unlock()
-}
-
-// startUpload initiates the upload process for the file
-func (w *BlobUpload) startUpload() {
-	defer w.finishUpload()
-	w.uploadLock.Lock()
-
-	// Upload the file to the server
-	log.Printf("Uploading blob %s to server", w.BlobFile.BlobListing.Key)
-	_, err := w.BlobFile.myBlobs.client.APIClient.RawRequest(
-		w.uploadCtx,
-		http.MethodPost,
-		"/v1/blob/"+w.BlobFile.BlobListing.Key,
-		w.pipeReader,
-	)
-
-	// Report the status of the upload
-	if err != nil {
-		common.ReportError("Failed to upload file %v", err, w.BlobFile.BlobListing.Key)
-	} else {
-		log.Printf("Successfully uploaded file %s", w.BlobFile.BlobListing.Key)
-	}
 }

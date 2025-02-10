@@ -8,7 +8,6 @@ import (
 	common "github.com/404wolf/valfs/common"
 	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
-	"github.com/subosito/gozaru"
 )
 
 // refreshBlobs updates the filesystem with the latest blob information
@@ -35,34 +34,33 @@ func refreshBlobs(
 	for _, newBlob := range newBlobs {
 		stillExistingBlobs[newBlob.Key] = true
 
-		existingBlobFile, exists := myBlobs.KnownBlobs.Get(newBlob.Key)
-		if exists {
+		inode := myBlobs.GetChild(newBlob.GetKey())
+		if inode != nil {
+			blobFile := inode.Operations().(*BlobFile)
 			// The blob already exists, check if it needs updating
-			if newBlob.GetLastModified().After(existingBlobFile.BlobListing.GetLastModified()) {
-				existingBlobFile.BlobListing = newBlob
-				root.GetChild(gozaru.Sanitize(newBlob.Key)).NotifyContent(0, 0)
+			if newBlob.GetLastModified().After(blobFile.Meta.GetLastModified()) {
+				blobFile.Meta = newBlob
+				root.GetChild(newBlob.Key).NotifyContent(0, 0)
 				log.Printf("Updated blob %s, found newer on valtown", newBlob.Key)
 			}
 		} else {
 			// This is a new blob, add it to the filesystem
 			blobFile := NewBlobFileAuto(newBlob, myBlobs)
 			newInode := root.NewPersistentInode(ctx, blobFile, fs.StableAttr{Mode: syscall.S_IFREG})
-			sanitizedFilename := gozaru.Sanitize(newBlob.Key)
-			root.AddChild(sanitizedFilename, newInode, true)
-			myBlobs.KnownBlobs.Set(newBlob.Key, blobFile)
+			root.AddChild(newBlob.Key, newInode, true) // TODO this is nullable
 			log.Printf("Added blob %s, found fresh on valtown", newBlob.Key)
 		}
 	}
 
 	// Check for blobs that no longer exist and remove them
-	myBlobs.KnownBlobs.IterCb(func(key string, value *BlobFile) {
-		if !stillExistingBlobs[key] {
+	inodes := myBlobs.Children()
+	for name := range inodes {
+		if !stillExistingBlobs[name] {
 			// This blob no longer exists, remove it from the filesystem and map
-			root.RmChild(gozaru.Sanitize(key))
-			myBlobs.KnownBlobs.Remove(key)
-			log.Printf("Removed blob %s no longer found on valtown", key)
+			root.RmChild(name)
+			log.Printf("Removed blob %s no longer found on valtown", name)
 		}
-	})
+	}
 
 	return nil
 }
