@@ -14,7 +14,6 @@ import (
 	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
-	cmap "github.com/orcaman/concurrent-map/v2"
 
 	common "github.com/404wolf/valfs/common"
 )
@@ -34,15 +33,7 @@ func validateName(filename string) bool {
 // The folder with all of my blobs in it
 type MyBlobs struct {
 	fs.Inode
-
-	// All the current blobs that have been added to the MyBlobs folder. A
-	// mapping from the keys of the blobs to the actual BlobFiles.
-	KnownBlobs cmap.ConcurrentMap[string, *BlobFile]
-
-	// Maintain a list of all the ongoing uploads, to check if a given blob key
-	// is being uploaded
-	ongoingUploads cmap.ConcurrentMap[string, *BlobUpload]
-	client         *common.Client
+	client *common.Client
 }
 
 var _ = (fs.NodeCreater)((*MyBlobs)(nil))
@@ -52,11 +43,7 @@ var _ = (fs.NodeRenamer)((*MyBlobs)(nil))
 // Set up background refresh of blobs and retrieve an auto updating folder of
 // blob files
 func NewMyBlobs(parent *fs.Inode, client *common.Client, ctx context.Context) *MyBlobs {
-	myBlobs := &MyBlobs{
-		client:         client,
-		ongoingUploads: cmap.New[*BlobUpload](),
-		KnownBlobs:     cmap.New[*BlobFile](),
-	}
+	myBlobs := &MyBlobs{client: client}
 	attrs := fs.StableAttr{Mode: syscall.S_IFDIR | 0555}
 	parent.NewInode(ctx, myBlobs, attrs)
 
@@ -76,27 +63,16 @@ func NewMyBlobs(parent *fs.Inode, client *common.Client, ctx context.Context) *M
 
 // Handle deletion of a file by also deleting the blob
 func (c *MyBlobs) Unlink(ctx context.Context, name string) syscall.Errno {
-	blobFile, ok := c.KnownBlobs.Get(name)
-	if !ok {
-		return syscall.ENOENT
-	}
-
-	key := blobFile.BlobListing.Key
-	log.Printf("Deleting blob %s", key)
+	log.Printf("Deleting blob %s", name)
 
 	// Attempt to delete the blob
-	reqCtx, cleanup := context.WithTimeout(ctx, 5*time.Second)
-	defer cleanup()
-	_, err := c.client.APIClient.BlobsAPI.BlobsDelete(reqCtx, key).Execute()
+	_, err := c.client.APIClient.BlobsAPI.BlobsDelete(ctx, name).Execute()
 	if err != nil {
-		log.Printf("Error deleting blob %s: %v", key, err)
+		log.Printf("Error deleting blob %s: %v", name, err)
 		return syscall.EIO
 	} else {
-		log.Printf("Deleted blob %s", key)
+		log.Printf("Deleted blob %s", name)
 	}
-
-	// Remove the blobFile from the maps
-	c.KnownBlobs.Remove(name)
 
 	return syscall.F_OK
 }
@@ -122,9 +98,6 @@ func (c *MyBlobs) Create(
 	blobListingItem.SetSize(0)
 	blobListingItem.SetLastModified(time.Now().Add(-10 * time.Second))
 	blobFile := NewBlobFile(*blobListingItem, c)
-
-	// Add the new blob to knownBlobs
-	c.KnownBlobs.Set(name, blobFile)
 
 	// Create the empty blob on valtown
 	tempFile, _, err := blobFile.EnsureTempFile()
@@ -182,43 +155,22 @@ func (c *MyBlobs) Rename(
 		return syscall.EINVAL
 	}
 
-	// Update metadata for the blob (do book keeping)
-	blobFile, ok := c.KnownBlobs.Get(oldName)
-	if !ok {
-		common.ReportError("Blob not found", errors.New("Blob not found"))
-		return syscall.ENOENT
-	}
-
-	oldKey := blobFile.BlobListing.Key
-
-	inode := c.GetChild(oldKey)
-	if inode == nil {
-		return syscall.ENOENT
-	}
-
 	// Start a transaction to do the rename
-	err := c.renameTransaction(ctx, &oldKey, newName)
+	err := c.renameTransaction(ctx, oldName, newName)
 	if err != nil {
 		common.ReportError("Error renaming blob", err)
 		return syscall.EIO
 	}
 
-	// Update the local metadata
-	blobFile.BlobListing.Key = newName
-
-	// Update knownBlobs
-	c.KnownBlobs.Remove(oldName)
-	c.KnownBlobs.Set(newName, blobFile)
-
 	return syscall.F_OK
 }
 
-func (c *MyBlobs) renameTransaction(ctx context.Context, oldKey *string, newKey string) error {
+func (c *MyBlobs) renameTransaction(ctx context.Context, oldKey string, newKey string) error {
 	// Fetch the old blob
 	getResp, err := c.client.APIClient.RawRequest(
 		ctx,
 		http.MethodGet,
-		"/v1/blob/"+*oldKey,
+		"/v1/blob/"+oldKey,
 		nil,
 	)
 	if err != nil {
@@ -264,14 +216,14 @@ func (c *MyBlobs) renameTransaction(ctx context.Context, oldKey *string, newKey 
 
 	// If we've made it this far, the new blob is stored successfully.
 	// Now we can safely delete the old blob.
-	resp, err := c.client.APIClient.BlobsAPI.BlobsDelete(ctx, *oldKey).Execute()
+	resp, err := c.client.APIClient.BlobsAPI.BlobsDelete(ctx, oldKey).Execute()
 	if err != nil {
-		log.Printf("Error deleting blob %s: %v", *oldKey, err)
+		log.Printf("Error deleting blob %s: %v", oldKey, err)
 		return syscall.EIO
 	} else if resp.StatusCode != http.StatusNoContent {
 		return errors.New(common.ReportErrorResp("Error deleting blob", resp))
 	} else {
-		log.Printf("Deleted blob %s", *oldKey)
+		log.Printf("Deleted blob %s", oldKey)
 	}
 
 	return nil
