@@ -8,7 +8,8 @@ run: valfs
 	./valfs
 
 test:
-	GOMAXPROCS=1 go test -v ./...
+  # give it two chances, in case of unexpected API errors or ratelimits
+	GOMAXPROCS=1 go test -v ./... -failfast || sleep 60 && go test -v ./... -run="$(FAILED)"
 
 clean:
 	rm -f valfs
