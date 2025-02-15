@@ -79,7 +79,7 @@ func SetupTests(t *testing.T) TestData {
 
 	// Mount the valfs file system
 	mount := func() {
-		cmd = exec.Command(valfsPath, "mount", testDir, "--verbose", "--no-refresh")
+		cmd = exec.Command(valfsPath, "mount", testDir, "--no-refresh")
 		cmd.Env = os.Environ()
 		cmd.Dir = projectRoot
 
