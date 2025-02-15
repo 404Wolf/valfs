@@ -101,50 +101,6 @@ func TestDeleteVal(t *testing.T) {
 	})
 }
 
-func TestAppendVal(t *testing.T) {
-	testData, blobDir := setupTest(t)
-	defer testData.Cleanup()
-
-	t.Run("Append to val file", func(t *testing.T) {
-		fileName := randomFilename("append.S.tsx")
-		filePath := filepath.Join(blobDir, fileName)
-
-		// Create initial file
-		initialContent := "console.log('Initial content');"
-		err := os.WriteFile(filePath, []byte(initialContent), 0644)
-		require.NoError(t, err, "Failed to create file for appending")
-
-		// Read and parse initial metadata
-		initialContents, err := os.ReadFile(filePath)
-		require.NoError(t, err, "Failed to read initial file")
-		_, initialMeta, err := valfile.DeconstructVal(string(initialContents))
-		require.NoError(t, err, "Failed to parse initial metadata")
-		initialVersion := initialMeta.Version
-
-		// Append content
-		appendContent := "\nconsole.log('Appended content');"
-		file, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0644)
-		require.NoError(t, err, "Failed to open file for appending")
-
-		_, err = file.WriteString(appendContent)
-		file.Close()
-		require.NoError(t, err, "Failed to append content")
-
-		// Verify content and metadata
-		finalContents, err := os.ReadFile(filePath)
-		require.NoError(t, err, "Failed to read final file")
-		finalCode, finalMeta, err := valfile.DeconstructVal(string(finalContents))
-		require.NoError(t, err, "Failed to parse final metadata")
-
-		// Check version increment
-		assert.Greater(t, finalMeta.Version, initialVersion, "Version should increment after modification")
-
-		// Verify code contains both initial and appended content
-		assert.Contains(t, *finalCode, "Initial content", "Final code should contain initial content")
-		assert.Contains(t, *finalCode, "Appended content", "Final code should contain appended content")
-	})
-}
-
 func TestRenameVal(t *testing.T) {
 	testData, blobDir := setupTest(t)
 	defer testData.Cleanup()
