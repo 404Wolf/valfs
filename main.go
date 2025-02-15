@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
-	"github.com/404wolf/valfs/cmd"
-	"github.com/joho/godotenv"
 	"log"
 	"os"
 	"strings"
+
+	"github.com/404wolf/valfs/cmd"
+	"github.com/joho/godotenv"
+	"go.uber.org/zap"
 )
 
 func loadEnvFile() error {
@@ -29,8 +31,16 @@ func loadEnvFile() error {
 	return nil
 }
 
+func setupLogger() {
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+	sugar := logger.Sugar()
+	sugar.Infof("Failed to fetch URL: %s", "test")
+}
+
 func setup() {
 	loadEnvFile()
+	setupLogger()
 }
 
 func execute() {
