@@ -79,7 +79,7 @@ func SetupTests(t *testing.T) TestData {
 
 	// Mount the valfs file system
 	mount := func() {
-		cmd = exec.Command(valfsPath, "mount", testDir, "--no-refresh")
+		cmd = exec.Command(valfsPath, "mount", testDir, "--verbose", "--no-refresh")
 		cmd.Env = os.Environ()
 		cmd.Dir = projectRoot
 
@@ -121,7 +121,6 @@ func SetupTests(t *testing.T) TestData {
 
 	// Prepare cleanup function
 	cleanup := func() {
-		os.RemoveAll(testDir + "/myblobs")
 		os.RemoveAll(testDir + "/myvals")
 		unmount()
 	}
