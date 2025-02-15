@@ -3,21 +3,20 @@ module github.com/404wolf/valfs
 go 1.22
 
 require (
-	github.com/404wolf/valgo v0.0.2
+	github.com/404wolf/valgo v0.0.3
 	github.com/djherbis/buffer v1.2.0
 	github.com/djherbis/nio/v3 v3.0.1
 	github.com/goccy/go-yaml v1.15.13
 	github.com/hanwen/go-fuse/v2 v2.7.2
 	github.com/joho/godotenv v1.5.1
-	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/spf13/cobra v1.8.1
+	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
-	github.com/subosito/gozaru v0.0.0-20190625071150-416082cce636
 	github.com/zijiren233/yaml-comment v0.2.2
+	go.uber.org/zap v1.27.0
 )
 
 require (
-	github.com/danieldn/tc v0.0.0-20200509183228-eb2ad54360ce // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
@@ -33,10 +32,8 @@ require (
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/spf13/viper v1.19.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	go.uber.org/atomic v1.9.0 // indirect
-	go.uber.org/multierr v1.9.0 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
