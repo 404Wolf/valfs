@@ -9,7 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joho/godotenv"
+	"github.com/404wolf/valfs/common"
+	"github.com/404wolf/valgo"
 )
 
 // TestData holds information about the test environment
@@ -18,6 +19,7 @@ type TestData struct {
 	Cleanup     func()
 	Unmount     func()
 	Mount       func()
+	APIClient   *common.APIClient
 	cmd         *exec.Cmd
 	projectRoot string
 }
@@ -64,21 +66,6 @@ func SetupTests(t *testing.T) TestData {
 		t.Fatalf("Failed to find project root: %v", err)
 	}
 
-	// Load environment variables from .env file
-	err = godotenv.Load(filepath.Join(projectRoot, ".env"))
-	if err != nil {
-		// If .env file is not found, log a warning but continue
-		t.Logf("Warning: Error loading .env file: %v", err)
-		t.Log("Falling back to system environment variables")
-	}
-
-	// Check for required environment variables
-	requiredEnvVars := []string{"VAL_TOWN_API_KEY"} // Add other required variables here
-	for _, envVar := range requiredEnvVars {
-		if value := os.Getenv(envVar); value == "" {
-			t.Fatalf("Required environment variable %s is not set", envVar)
-		}
-	}
 	// Create a temporary directory for the test
 	testDir, err := os.MkdirTemp("", "valfs-tests-")
 	if err != nil {
@@ -134,14 +121,22 @@ func SetupTests(t *testing.T) TestData {
 
 	// Prepare cleanup function
 	cleanup := func() {
-		unmount()
-		os.RemoveAll(testDir + "/myblobs")
 		os.RemoveAll(testDir + "/myvals")
+		unmount()
 	}
+
+	// Make them a apiClient
+	configuration := valgo.NewConfiguration()
+	configuration.AddDefaultHeader(
+		"Authorization",
+		"Bearer "+os.Getenv("VAL_TOWN_API_KEY"),
+	)
+	apiClient := common.NewAPIClient(configuration)
 
 	return TestData{
 		MountPoint:  testDir,
 		Cleanup:     cleanup,
+		APIClient:   apiClient,
 		Unmount:     unmount,
 		Mount:       mount,
 		cmd:         cmd,
