@@ -137,6 +137,8 @@ Some of the TODOs hinge on Val Town improving their API and exposing more functi
 - add logging
 - metadata at top
 - trash (to view previous versions)
+- ValFiles should only have one val data reference, not two, or it should be 
+  better documented how the lazy loading works.
 
 ## ValFile Operations
 - rename

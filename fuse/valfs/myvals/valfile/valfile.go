@@ -95,6 +95,7 @@ func NewValFileFromExtendedVal(
 	log.Println("Create new val file named", val.Name, "from extended val")
 
 	return &ValFile{
+		BasicData:    val.ToBasicVal(),
 		ExtendedData: &val,
 		client:       client,
 		ModifiedAt:   *getValVersionCreatedAt(val, client),
@@ -112,7 +113,7 @@ func (f *ValFile) ModifiedNow() {
 	f.ModifiedAt = time.Now()
 }
 
-// Get a file descriptor for a val file
+// Get a file handle for a val file
 func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 	fh fs.FileHandle,
 	fuseFlags uint32,
@@ -120,7 +121,7 @@ func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 ) {
 	if f.ExtendedData == nil {
 		log.Println("Valfile was lazy. Now getting extended val data for", f.BasicData.Name)
-		extVal, _, err := f.client.APIClient.ValsAPI.ValsGet(ctx, f.BasicData.GetId()).Execute()
+		extVal, _, err := f.client.APIClient.ValsAPI.ValsGet(ctx, f.BasicData.Id).Execute()
 		if err != nil {
 			log.Println("Error fetching val", err)
 			return nil, 0, syscall.EIO
