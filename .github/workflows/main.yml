@@ -28,7 +28,7 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
-          retry_wait_seconds: 20
+          retry_wait_seconds: 70
           command: |
             make test
         env:
