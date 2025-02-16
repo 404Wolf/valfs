@@ -43,4 +43,6 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@main
 
       - name: Test Nix build-ability
-        run: nix flake check --extra-experimental-features "nix-command flakes"
+        run: |
+          nix flake check
+          nix build
