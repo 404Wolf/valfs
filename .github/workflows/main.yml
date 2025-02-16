@@ -5,7 +5,7 @@ on:
     branches: ["main"]
 
 jobs:
-  test-linux:
+  test-run:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,3 +33,14 @@ jobs:
             make test
         env:
           VAL_TOWN_API_KEY: ${{ secrets.VAL_TOWN_API_KEY }}
+
+  test-nix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Test Nix build-ability
+        run: nix flake check --extra-experimental-features "nix-command flakes"
