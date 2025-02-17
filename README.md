@@ -1,5 +1,8 @@
 # Val Town File System
 
+![recording_20250217_000555](https://github.com/user-attachments/assets/521d2a22-ac49-4b44-a4d8-96912418a890)
+
+
 ## Mount your Val Town vals to a folder, and edit them as if they were just files on your computer.
 
 # Quick start
