@@ -2,14 +2,18 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/spf13/cobra"
 	"io"
 	"log"
 	"os"
+
+	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 )
 
-var logger *log.Logger
-var verbose bool
+var (
+	logger  *log.Logger
+	verbose bool
+)
 
 func initLogger() {
 	if verbose {
@@ -36,13 +40,11 @@ func handleShebangCall(args []string) {
 func InitRoot() {
 	cobra.OnInitialize(initLogger)
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 
-	FuseInit()
-	ValsInit()
+	ValfsInit()
 }
 
-func Execute() error {
+func Execute(logger *zap.SugaredLogger) error {
 	InitRoot()
 	return rootCmd.Execute()
 }
