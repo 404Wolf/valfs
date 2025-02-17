@@ -13,6 +13,8 @@ import (
 	"github.com/404wolf/valgo"
 )
 
+const BinaryName = "build"
+
 // TestData holds information about the test environment
 type TestData struct {
 	MountPoint  string
@@ -73,7 +75,7 @@ func SetupTests(t *testing.T) TestData {
 	}
 
 	// Path to the valfs binary
-	valfsPath := filepath.Join(projectRoot, "valfs")
+	valfsPath := filepath.Join(projectRoot, BinaryName)
 
 	var cmd *exec.Cmd
 
