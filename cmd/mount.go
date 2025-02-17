@@ -71,6 +71,7 @@ func ValfsInit() {
 	mountCmd.Flags().IntVar(&valfsConfig.AutoRefreshInterval, "refresh-interval", 300, "how often to poll val town website for changes (in seconds)")
 	mountCmd.Flags().BoolVar(&valfsConfig.EnableValsDirectory, "vals-directory", true, "add a directory for your vals")
 	mountCmd.Flags().BoolVar(&valfsConfig.GoFuseDebug, "fuse-debug", false, "enable go fuse's debug mode")
+	mountCmd.Flags().BoolVar(&valfsConfig.StaticMeta, "static-writes", false, "ensure val file metadata doesn't change on writes")
 
 	// Add commands to the command tree
 	fuseCmd.AddCommand(mountCmd)

@@ -221,14 +221,16 @@ func (c *ValFile) Write(
 	log.Println("Updated val file", prevExtVal.Name)
 
 	// And finally, retreive the val's extended data again
-	extVal, _, err = c.client.APIClient.ValsAPI.ValsGet(ctx, prevExtVal.GetId()).Execute()
-	if err != nil {
-		common.ReportError("Error fetching val", err)
-		return 0, syscall.EIO
+	if !c.client.Config.StaticMeta {
+		extVal, _, err = c.client.APIClient.ValsAPI.ValsGet(ctx, prevExtVal.GetId()).Execute()
+		if err != nil {
+			common.ReportError("Error fetching val", err)
+			return 0, syscall.EIO
+		}
+		c.ExtendedData = extVal
+		c.ModifiedNow()
 	}
-	c.ExtendedData = extVal
 
-	c.ModifiedNow()
 	return uint32(len(data)), syscall.F_OK
 }
 
