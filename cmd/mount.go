@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"log"
+	"os"
 
 	common "github.com/404wolf/valfs/common"
 	valfs "github.com/404wolf/valfs/valfs"
@@ -23,25 +24,33 @@ var mountCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		valfsConfig.MountPoint = args[0]
 
-		// Setup Viper for .env
-		viper.SetConfigFile(".env")
-		viper.SetConfigType("env")
-		// Also check for environment variables
-		viper.AutomaticEnv()
+		// First check direct environment variable
+		apiKey := os.Getenv("VAL_TOWN_API_KEY")
 
-		// Read config file
-		if err := viper.ReadInConfig(); err != nil {
-			// It's okay if there's no config file
-			if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-				log.Fatalf("Error reading config file: %v", err)
-			}
-		}
-
-		// Get API key from Viper (checks both .env and environment variables)
-		apiKey := viper.GetString("VAL_TOWN_API_KEY")
+		// If not found in environment, try .env file
 		if apiKey == "" {
-			log.Fatal("VAL_TOWN_API_KEY not found in environment or .env file")
+			// Setup Viper for .env
+			viper.SetConfigFile(".env")
+			viper.SetConfigType("env")
+			viper.AutomaticEnv()
+
+			// Read config file
+			if err := viper.ReadInConfig(); err != nil {
+				// It's okay if there's no config file
+				if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+					log.Fatalf("Error reading config file: %v", err)
+				}
+			}
+
+			// Get API key from Viper
+			apiKey = viper.GetString("VAL_TOWN_API_KEY")
 		}
+
+		// Final check if API key is set
+		if apiKey == "" {
+			log.Fatal("VAL_TOWN_API_KEY not found. Please set it in environment or .env file")
+		}
+
 		valfsConfig.APIKey = apiKey
 
 		// Create a root node
