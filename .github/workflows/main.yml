@@ -15,9 +15,6 @@ jobs:
         with:
           go-version: "1.22"
 
-      - name: Build
-        run: make
-
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:

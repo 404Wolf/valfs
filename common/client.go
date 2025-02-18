@@ -2,96 +2,40 @@ package common
 
 import (
 	"context"
-	"io"
-	"log"
 	"math/rand/v2"
-	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/404wolf/valgo"
+	"go.uber.org/zap"
 )
 
 type Client struct {
-	User      valgo.User
-	APIKey    string
-	APIClient *APIClient
-	Started   time.Time
-	Id        uint64
-	Refresh   bool
+	APIClient  *APIClient
+	APIKey     string
+	Config     ValfsConfig
+	DenoCacher *DenoCacher
+	Id         uint64
+	Logger     *zap.SugaredLogger
+	Started    time.Time
+	User       valgo.User
 }
 
-type APIClient struct {
-	*valgo.APIClient
-	cfg *valgo.Configuration
-}
-
-func NewAPIClient(cfg *valgo.Configuration) *APIClient {
-	return &APIClient{
-		APIClient: valgo.NewAPIClient(cfg),
-		cfg:       cfg,
-	}
-}
-
-func (c *APIClient) RawRequest(
+func NewClient(
+	apiKey string,
 	ctx context.Context,
-	method, path string,
-	body io.Reader,
-) (*http.Response, error) {
-	// Use the first server URL if available, otherwise fall back to Scheme and Host
-	var baseURL string
-	if len(c.cfg.Servers) > 0 {
-		baseURL = c.cfg.Servers[0].URL
-	} else {
-		baseURL = c.cfg.Scheme + "://" + c.cfg.Host
-	}
-
-	// Construct the full URL
-	u, err := url.Parse(baseURL)
-	if err != nil {
-		return nil, err
-	}
-	u.Path = path
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	// Add default headers
-	for k, v := range c.cfg.DefaultHeader {
-		req.Header.Add(k, v)
-	}
-
-	// Set User-Agent
-	if c.cfg.UserAgent != "" {
-		req.Header.Set("User-Agent", c.cfg.UserAgent)
-	}
-
-	// Use the configured HTTP client
-	client := c.cfg.HTTPClient
-	if client == nil {
-		client = http.DefaultClient
-	}
-
-	// Send the request
-	return client.Do(req)
-}
-
-func NewClient(apiKey string, ctx context.Context, refresh bool) *Client {
-	log.Printf("Creating new client")
-
+	refresh bool,
+	config ValfsConfig,
+	logFile string,
+	verbose bool,
+) *Client {
 	apiClientConfig := valgo.NewConfiguration()
 	apiClientConfig.AddDefaultHeader(
 		"Authorization",
 		"Bearer "+apiKey,
 	)
 	apiClient := NewAPIClient(apiClientConfig)
-	log.Printf("API client: %v", apiClient)
 
-	userResp, _, err := apiClient.MeAPI.MeGet(ctx).Execute()
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
+	userResp, _, _ := apiClient.MeAPI.MeGet(ctx).Execute()
 	user := valgo.NewUser(
 		userResp.Id,
 		userResp.Bio,
@@ -100,17 +44,19 @@ func NewClient(apiKey string, ctx context.Context, refresh bool) *Client {
 		userResp.Url,
 		userResp.Links,
 	)
-	log.Printf("Active user: %v", user.GetUsername())
 
 	client := &Client{
-		APIClient: apiClient,
-		APIKey:    apiKey,
-		User:      *user,
-		Started:   time.Now(),
-		Id:        rand.Uint64(),
-		Refresh:   refresh,
+		APIClient:  apiClient,
+		APIKey:     apiKey,
+		Config:     config,
+		DenoCacher: NewDenoCacher(),
+		Id:         rand.Uint64(),
+		Started:    time.Now(),
+		User:       *user,
 	}
 
-	log.Printf("Client: %v", client)
+	// Setup logger after client is initialized
+	client.Logger = client.setupLogger(logFile, verbose)
+
 	return client
 }

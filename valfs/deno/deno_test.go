@@ -1,15 +1,15 @@
-package fuse_test
+package valfs_test
 
 import (
 	"os"
 	"testing"
 
-	fuse "github.com/404wolf/valfs/fuse"
+	valfs "github.com/404wolf/valfs/valfs"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestDenoJson(t *testing.T) {
-	testData := fuse.SetupTests(t)
+	testData := valfs.SetupTests(t)
 	defer testData.Cleanup()
 
 	actualDenoJson, err := os.ReadFile(testData.MountPoint + "/deno.json")
