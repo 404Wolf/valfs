@@ -209,7 +209,7 @@ func (c *MyBlobs) renameTransaction(ctx context.Context, oldKey string, newKey s
 	// Check to see if the store was successful
 	if storeResp.StatusCode != http.StatusCreated {
 		c.client.Logger.Error("Error storing blob with new key", storeResp)
-		return fmt.Errorf("Failed to store new blob: %d", storeResp)
+		return fmt.Errorf("Failed to store new blob: %v", storeResp)
 	}
 
 	// If we've made it this far, the new blob is stored successfully.
@@ -219,7 +219,7 @@ func (c *MyBlobs) renameTransaction(ctx context.Context, oldKey string, newKey s
 		c.client.Logger.Error("Error deleting blob "+oldKey+": ", err)
 		return syscall.EIO
 	} else if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("Error deleting blob", resp)
+		return fmt.Errorf("Error deleting blob %v", resp)
 	} else {
 		c.client.Logger.Info("Deleted blob " + oldKey)
 	}
