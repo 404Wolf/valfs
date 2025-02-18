@@ -175,7 +175,7 @@ func (c *ValFile) Write(
 	off int64,
 ) (written uint32, errno syscall.Errno) {
 	prevExtVal, err := c.GetExtendedData(ctx)
-	c.client.Logger.Info("Writing to val file", "val", prevExtVal)
+	c.client.Logger.Info("Writing to val file", "val", prevExtVal.GetId())
 
 	// Create new packed file contents
 	newValPackage := NewValPackage(c.client, prevExtVal)
