@@ -1,8 +1,7 @@
-package fuse
+package valfs
 
 import (
 	"context"
-	"log"
 	"syscall"
 	"time"
 
@@ -13,10 +12,9 @@ import (
 	"github.com/hanwen/go-fuse/v2/fuse"
 
 	common "github.com/404wolf/valfs/common"
-	valfile "github.com/404wolf/valfs/fuse/valfs/myvals/valfile"
 )
 
-const VAL_REFRESH_INTERVAL = 5
+const WAIT_BEFORE_DENO_CACHING = time.Second * 1
 
 // The folder with all of my vals in it
 type MyVals struct {
@@ -37,13 +35,13 @@ func NewMyVals(parent *fs.Inode, client *common.Client, ctx context.Context) *My
 	attrs := fs.StableAttr{Mode: syscall.S_IFDIR | 0555}
 	parent.NewPersistentInode(ctx, myValsDir, attrs)
 
-	if client.Refresh {
-		refreshVals(ctx, &myValsDir.Inode, *client)
-		ticker := time.NewTicker(VAL_REFRESH_INTERVAL * time.Second)
+	refreshVals(ctx, &myValsDir.Inode, *client)
+	if client.Config.AutoRefresh {
+		ticker := time.NewTicker(time.Duration(client.Config.AutoRefreshInterval) * time.Second)
 		go func() {
 			for range ticker.C {
 				refreshVals(ctx, &myValsDir.Inode, *client)
-				log.Println("Refreshed vals")
+				client.Logger.Info("Refreshed vals")
 			}
 		}()
 	}
@@ -53,24 +51,24 @@ func NewMyVals(parent *fs.Inode, client *common.Client, ctx context.Context) *My
 
 // Handle deletion of a file by also deleting the val
 func (c *MyVals) Unlink(ctx context.Context, name string) syscall.Errno {
-	log.Printf("Deleting val %s", name)
+	c.client.Logger.Infof("Deleting val %s", name)
 	child := c.GetChild(name)
 	if child == nil {
 		return syscall.ENOENT
 	}
 
 	// Cast the file handle to a ValFile
-	valFile, ok := child.Operations().(*valfile.ValFile)
+	valFile, ok := child.Operations().(*ValFile)
 	if !ok {
 		return syscall.EINVAL
 	}
 
 	_, err := c.client.APIClient.ValsAPI.ValsDelete(ctx, valFile.BasicData.Id).Execute()
 	if err != nil {
-		common.ReportError("Error deleting val", err)
+		c.client.Logger.Error("Error deleting val", err)
 		return syscall.EIO
 	}
-	log.Printf("Deleted val %s", valFile.BasicData.Id)
+	c.client.Logger.Infof("Deleted val %s", valFile.BasicData.Id)
 
 	return 0
 }
@@ -83,32 +81,32 @@ func (c *MyVals) Create(
 	mode uint32,
 	entryOut *fuse.EntryOut,
 ) (inode *fs.Inode, fh fs.FileHandle, fuseFlags uint32, code syscall.Errno) {
-	valName, valType := valfile.ExtractFromFilename(name)
-	if valType == valfile.Unknown {
+	valName, valType := ExtractFromFilename(name)
+	if valType == Unknown {
 		return nil, nil, 0, syscall.EINVAL
 	}
-	log.Printf("Creating val %s of type %s", valName, valType)
+	c.client.Logger.Infof("Creating val %s of type %s", valName, valType)
 
 	// Make a request to create the val
-	templateCode := valfile.GetTemplate(valType)
+	templateCode := GetTemplate(valType)
 	createReq := valgo.NewValsCreateRequest(string(templateCode))
 	createReq.SetName(valName)
 	createReq.SetType(string(valType))
-	createReq.SetPrivacy(valfile.DefaultPrivacy)
+	createReq.SetPrivacy(DefaultPrivacy)
 	val, _, err := c.client.APIClient.ValsAPI.ValsCreate(ctx).ValsCreateRequest(*createReq).Execute()
 
 	// Check if the request was successful
 	if err != nil {
-		common.ReportError("Error creating val", err)
+		c.client.Logger.Error("Error creating val", err)
 		return nil, nil, 0, syscall.EIO
 	} else {
-		log.Printf("Created val %v", val)
+		c.client.Logger.Infof("Created val %v", val)
 	}
 
 	// Create a val file that we can hand over
-	valFile, err := valfile.NewValFileFromExtendedVal(*val, c.client)
+	valFile, err := NewValFileFromExtendedVal(*val, c.client)
 	if err != nil {
-		common.ReportError("Error creating val file", err)
+		c.client.Logger.Error("Error creating val file", err)
 		return nil, nil, 0, syscall.EIO
 	}
 	newInode := c.NewPersistentInode(
@@ -119,6 +117,12 @@ func (c *MyVals) Create(
 	// Open the file handle
 	fileHandle, _, _ := valFile.Open(ctx, flags)
 	valFile.ModifiedNow()
+
+	// Schedule a deno cache for after the file gets created to cache new modules
+	time.AfterFunc(
+		WAIT_BEFORE_DENO_CACHING*time.Millisecond,
+		func() { c.client.DenoCacher.DenoCache(name) },
+	)
 
 	// Create a file handle
 	return newInode, &fileHandle, fuse.FOPEN_DIRECT_IO, syscall.F_OK
@@ -134,13 +138,13 @@ func (c *MyVals) Rename(
 ) syscall.Errno {
 	// Check if we're moving between directories
 	if newParent.EmbeddedInode().StableAttr().Ino != c.Inode.StableAttr().Ino {
-		log.Printf("Cannot move val out of the `myvals` directory")
+		c.client.Logger.Info("Cannot move val out of the `myvals` directory")
 		return syscall.EINVAL
 	}
 
 	// Validate the new filename
-	valName, valType := valfile.ExtractFromFilename(newName)
-	if valType == valfile.Unknown {
+	valName, valType := ExtractFromFilename(newName)
+	if valType == Unknown {
 		return syscall.EINVAL
 	}
 
@@ -153,7 +157,7 @@ func (c *MyVals) Rename(
 	if inode == nil {
 		return syscall.ENOENT
 	}
-	valFile := inode.Operations().(*valfile.ValFile)
+	valFile := inode.Operations().(*ValFile)
 
 	// Prepare the update request
 	valUpdateReq := valgo.NewValsUpdateRequest()
@@ -163,14 +167,14 @@ func (c *MyVals) Rename(
 	// Update the val in the backend
 	_, err := c.client.APIClient.ValsAPI.ValsUpdate(ctx, valFile.BasicData.Id).ValsUpdateRequest(*valUpdateReq).Execute()
 	if err != nil {
-		log.Printf("Error updating val %s: %v", oldName, err)
+		c.client.Logger.Errorf("Error updating val %s: %v", oldName, err)
 		return syscall.EIO
 	}
 
 	// Fetch what the change produced
 	extVal, _, err := c.client.APIClient.ValsAPI.ValsGet(ctx, valFile.BasicData.Id).Execute()
 	if err != nil {
-		common.ReportError("Error fetching val", err)
+		c.client.Logger.Error("Error fetching val", err)
 		return syscall.EIO
 	}
 

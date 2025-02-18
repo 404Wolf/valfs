@@ -1,4 +1,4 @@
-package fuse
+package valfs
 
 import (
 	"fmt"
@@ -47,16 +47,16 @@ const ValExtension = "tsx"
 const DefaultPrivacy = Unlisted
 const DefaultType = Script
 
-//go:embed templates/script.ts
+//go:embed valfile_templates/script.ts
 var scriptTemplate []byte
 
-//go:embed templates/email.ts
+//go:embed valfile_templates/email.ts
 var emailTemplate []byte
 
-//go:embed templates/http.ts
+//go:embed valfile_templates/http.ts
 var httpTemplate []byte
 
-//go:embed templates/cron.ts
+//go:embed valfile_templates/cron.ts
 var cronTemplate []byte
 
 func GetTemplate(valType ValType) string {

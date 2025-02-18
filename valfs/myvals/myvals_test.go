@@ -1,4 +1,4 @@
-package fuse_test
+package valfs_test
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	common "github.com/404wolf/valfs/common"
-	fuse "github.com/404wolf/valfs/fuse"
-	valfile "github.com/404wolf/valfs/fuse/valfs/myvals/valfile"
+	valfs "github.com/404wolf/valfs/valfs"
+	myvals "github.com/404wolf/valfs/valfs/myvals"
 	"github.com/404wolf/valgo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,8 +18,8 @@ import (
 
 const dirName = "myvals"
 
-func setupTest(t *testing.T) (*fuse.TestData, string) {
-	return fuse.SetupTest(t, dirName)
+func setupTest(t *testing.T) (*valfs.TestData, string) {
+	return valfs.SetupTest(t, dirName)
 }
 
 func randomFilename(prefix string) string {
@@ -27,7 +27,7 @@ func randomFilename(prefix string) string {
 }
 
 func getValFromFileContents(t *testing.T, apiClient *common.APIClient, contents string) *valgo.ExtendedVal {
-	_, finalMeta, err := valfile.DeconstructVal(string(contents))
+	_, finalMeta, err := myvals.DeconstructVal(string(contents))
 	require.NoError(t, err, "Failed to parse final metadata")
 	valId := finalMeta.Id
 	val, _, err := apiClient.ValsAPI.ValsGet(context.Background(), valId).Execute()

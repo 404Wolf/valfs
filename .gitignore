@@ -1,6 +1,6 @@
-/valfs
-result
 .idea
+build
+./build
 .vscode
 tinkering
 tinker
