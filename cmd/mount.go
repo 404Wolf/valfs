@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"os"
 
 	common "github.com/404wolf/valfs/common"
@@ -38,7 +38,7 @@ var mountCmd = &cobra.Command{
 			if err := viper.ReadInConfig(); err != nil {
 				// It's okay if there's no config file
 				if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-					log.Fatalf("Error reading config file: %v", err)
+					fmt.Printf("Error reading config file: %v", err)
 				}
 			}
 
@@ -48,7 +48,7 @@ var mountCmd = &cobra.Command{
 
 		// Final check if API key is set
 		if apiKey == "" {
-			log.Fatal("VAL_TOWN_API_KEY not found. Please set it in environment or .env file")
+			fmt.Printf("VAL_TOWN_API_KEY not found. Please set it in environment or .env file")
 		}
 
 		valfsConfig.APIKey = apiKey
@@ -66,9 +66,9 @@ var mountCmd = &cobra.Command{
 		)
 
 		if err := root.Mount(func() {
-			log.Printf("Mounted ValFS file system from at %s\n", valfsConfig.MountPoint)
+			fmt.Printf("Mounted ValFS file system from at %s\n", valfsConfig.MountPoint)
 		}); err != nil {
-			log.Fatalf("Mount failed: %v", err)
+			fmt.Printf("Failed to mount ValFS. Error: %v", err)
 		}
 	},
 }
