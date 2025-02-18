@@ -1,4 +1,4 @@
-package fuse
+package valfs
 
 import (
 	"context"
@@ -21,7 +21,7 @@ func refreshBlobs(
 	// Fetch the latest list of blobs from the server
 	newBlobs, err := getMyBlobs(ctx, myBlobs.client)
 	if err != nil {
-		common.ReportError("Error fetching blobs", err)
+		myBlobs.client.Logger.Error("Error fetching blobs", err)
 		return nil
 	}
 

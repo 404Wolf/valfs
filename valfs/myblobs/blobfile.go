@@ -1,4 +1,4 @@
-package fuse
+package valfs
 
 import (
 	"context"
@@ -30,6 +30,8 @@ type BlobFile struct {
 	Meta    valgo.BlobListingItem
 	Upload  *BlobUpload
 	myBlobs *MyBlobs
+
+	client *common.Client
 }
 
 var _ = (fs.NodeOpener)((*BlobFile)(nil))
@@ -211,7 +213,7 @@ func (f *BlobFile) Write(
 	// Get current file size
 	fileInfo, err := bfh.file.Stat()
 	if err != nil {
-		common.ReportError("Failed to stat file for %s: %v", err, f.Meta.Key)
+		f.client.Logger.Error("Failed to stat file for %s: %v", err, f.Meta.Key)
 		return 0, syscall.EIO
 	}
 
@@ -223,21 +225,21 @@ func (f *BlobFile) Write(
 	// Write to temporary file
 	wrote, err := bfh.file.WriteAt(data, off)
 	if err != nil {
-		common.ReportError("Failed to write to temporary file for %s: %v", err, f.Meta.Key)
+		f.client.Logger.Error("Failed to write to temporary file for %s: %v", err, f.Meta.Key)
 		return 0, syscall.EIO
 	}
 	log.Printf("Wrote %d bytes at offset %d to temporary file for %s", wrote, off, f.Meta.Key)
 
 	// Write to upload
 	if err := f.Upload.Write(off, data, bfh.file); err != nil {
-		common.ReportError("Failed to write to upload for %s: %v", err, f.Meta.Key)
+		f.client.Logger.Error("Failed to write to upload for %s: %v", err, f.Meta.Key)
 		return 0, syscall.EIO
 	}
 
 	// Update metadata
 	fileInfo, err = bfh.file.Stat()
 	if err != nil {
-		common.ReportError("Failed to stat temporary file for %s: %v", err, f.Meta.Key)
+		f.client.Logger.Error("Failed to stat temporary file for %s: %v", err, f.Meta.Key)
 		return 0, syscall.EIO
 	}
 

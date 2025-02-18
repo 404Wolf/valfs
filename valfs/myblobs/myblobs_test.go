@@ -1,4 +1,4 @@
-package fuse_test
+package valfs_test
 
 import (
 	"fmt"
@@ -8,17 +8,15 @@ import (
 	"testing"
 	"time"
 
-	// "time"
-
-	fuse "github.com/404wolf/valfs/fuse"
+	valfs "github.com/404wolf/valfs/valfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 const dirName = "myblobs"
 
-func setupTest(t *testing.T) (*fuse.TestData, string) {
-	return fuse.SetupTest(t, dirName)
+func setupTest(t *testing.T) (*valfs.TestData, string) {
+	return valfs.SetupTest(t, dirName)
 }
 
 func generateRandomFileName(prefix string) string {

@@ -1,10 +1,9 @@
-package fuse
+package valfs
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"regexp"
 	"sync"
@@ -18,7 +17,6 @@ import (
 	common "github.com/404wolf/valfs/common"
 )
 
-const BlobRefreshInterval = 5
 const BlobRequestTimeout = 5
 
 var validFilenameRegex = regexp.MustCompile(`^[^\x00-\x1f/]+$`)
@@ -47,13 +45,13 @@ func NewMyBlobs(parent *fs.Inode, client *common.Client, ctx context.Context) *M
 	attrs := fs.StableAttr{Mode: syscall.S_IFDIR | 0555}
 	parent.NewInode(ctx, myBlobs, attrs)
 
-	if client.Refresh {
+	if client.Config.AutoRefresh {
 		refreshBlobs(ctx, &myBlobs.Inode, myBlobs)
-		ticker := time.NewTicker(BlobRefreshInterval * time.Second)
+		ticker := time.NewTicker(time.Duration(client.Config.AutoRefreshInterval) * time.Second)
 		go func() {
 			for range ticker.C {
 				refreshBlobs(ctx, &myBlobs.Inode, myBlobs)
-				log.Println("Refreshed blobs")
+				client.Logger.Info("Refreshed blobs")
 			}
 		}()
 	}
@@ -63,15 +61,15 @@ func NewMyBlobs(parent *fs.Inode, client *common.Client, ctx context.Context) *M
 
 // Handle deletion of a file by also deleting the blob
 func (c *MyBlobs) Unlink(ctx context.Context, name string) syscall.Errno {
-	log.Printf("Deleting blob %s", name)
+	c.client.Logger.Info("Deleting blob " + name)
 
 	// Attempt to delete the blob
 	_, err := c.client.APIClient.BlobsAPI.BlobsDelete(ctx, name).Execute()
 	if err != nil {
-		log.Printf("Error deleting blob %s: %v", name, err)
+		c.client.Logger.Error("Error deleting blob "+name+": ", err)
 		return syscall.EIO
 	} else {
-		log.Printf("Deleted blob %s", name)
+		c.client.Logger.Info("Deleted blob " + name)
 	}
 
 	return syscall.F_OK
@@ -89,7 +87,7 @@ func (c *MyBlobs) Create(
 		return nil, nil, 0, syscall.EINVAL
 	}
 
-	log.Printf("Creating blob %s", name)
+	c.client.Logger.Info("Creating blob " + name)
 
 	// The val town API does not give us the blob listing after we make it so we
 	// guess what it would be instead of doing a second round trip
@@ -102,7 +100,7 @@ func (c *MyBlobs) Create(
 	// Create the empty blob on valtown
 	tempFile, _, err := blobFile.EnsureTempFile()
 	if err != nil {
-		common.ReportError("Failed to open temporary file", err)
+		c.client.Logger.Error("Failed to open temporary file", err)
 		return nil, nil, 0, syscall.EIO
 	}
 
@@ -120,10 +118,10 @@ func (c *MyBlobs) Create(
 		tempFile,
 	)
 	if err != nil {
-		common.ReportError("Failed to create blob", err)
+		c.client.Logger.Error("Failed to create blob", err)
 		return nil, nil, 0, syscall.EIO
 	} else if resp.StatusCode != http.StatusCreated {
-		common.ReportErrorResp("Failed to create blob", resp)
+		c.client.Logger.Error("Failed to create blob", resp)
 		return nil, nil, 0, syscall.EIO
 	}
 
@@ -146,7 +144,7 @@ func (c *MyBlobs) Rename(
 ) syscall.Errno {
 	// Prevent from moving it out of the directory
 	if newParent.EmbeddedInode().StableAttr().Ino != c.Inode.StableAttr().Ino {
-		log.Printf("Cannot move blob out of the `myblobs` directory")
+		c.client.Logger.Info("Cannot move blob out of the `myblobs` directory")
 		return syscall.EINVAL
 	}
 
@@ -158,7 +156,7 @@ func (c *MyBlobs) Rename(
 	// Start a transaction to do the rename
 	err := c.renameTransaction(ctx, oldName, newName)
 	if err != nil {
-		common.ReportError("Error renaming blob", err)
+		c.client.Logger.Error("Error renaming blob", err)
 		return syscall.EIO
 	}
 
@@ -174,7 +172,7 @@ func (c *MyBlobs) renameTransaction(ctx context.Context, oldKey string, newKey s
 		nil,
 	)
 	if err != nil {
-		common.ReportError("Failed to fetch old blob data", err)
+		c.client.Logger.Error("Failed to fetch old blob data", err)
 		return err
 	}
 	defer getResp.Body.Close()
@@ -188,7 +186,7 @@ func (c *MyBlobs) renameTransaction(ctx context.Context, oldKey string, newKey s
 		defer wg.Done()
 		_, err := io.Copy(pw, getResp.Body)
 		if err != nil {
-			common.ReportError("Error copying blob data", err)
+			c.client.Logger.Error("Error copying blob data", err)
 		}
 	}()
 
@@ -200,7 +198,7 @@ func (c *MyBlobs) renameTransaction(ctx context.Context, oldKey string, newKey s
 		pr,
 	)
 	if err != nil {
-		common.ReportError("Error storing blob with new key", err)
+		c.client.Logger.Error("Error storing blob with new key", err)
 		return err
 	}
 
@@ -210,20 +208,20 @@ func (c *MyBlobs) renameTransaction(ctx context.Context, oldKey string, newKey s
 
 	// Check to see if the store was successful
 	if storeResp.StatusCode != http.StatusCreated {
-		common.ReportErrorResp("Error storing blob with new key", storeResp)
-		return errors.New(common.ReportErrorResp("Failed to store new blob: %d", storeResp))
+		c.client.Logger.Error("Error storing blob with new key", storeResp)
+		return fmt.Errorf("Failed to store new blob: %d", storeResp)
 	}
 
 	// If we've made it this far, the new blob is stored successfully.
 	// Now we can safely delete the old blob.
 	resp, err := c.client.APIClient.BlobsAPI.BlobsDelete(ctx, oldKey).Execute()
 	if err != nil {
-		log.Printf("Error deleting blob %s: %v", oldKey, err)
+		c.client.Logger.Error("Error deleting blob "+oldKey+": ", err)
 		return syscall.EIO
 	} else if resp.StatusCode != http.StatusNoContent {
-		return errors.New(common.ReportErrorResp("Error deleting blob", resp))
+		return fmt.Errorf("Error deleting blob", resp)
 	} else {
-		log.Printf("Deleted blob %s", oldKey)
+		c.client.Logger.Info("Deleted blob " + oldKey)
 	}
 
 	return nil
@@ -237,12 +235,12 @@ func (c *MyBlobs) rollbackRename(ctx context.Context, newKey string) {
 		nil,
 	)
 	if err != nil {
-		common.ReportError("Error rolling back rename", err)
+		c.client.Logger.Error("Error rolling back rename", err)
 		return
 	}
 	defer deleteResp.Body.Close()
 
 	if deleteResp.StatusCode != http.StatusOK {
-		common.ReportErrorResp("Error rolling back rename", deleteResp)
+		c.client.Logger.Error("Error rolling back rename", deleteResp)
 	}
 }

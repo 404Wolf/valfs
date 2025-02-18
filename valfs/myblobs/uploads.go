@@ -1,4 +1,4 @@
-package fuse
+package valfs
 
 import (
 	"context"
@@ -38,6 +38,7 @@ type BlobUpload struct {
 	endOfPipeIndex int64              // Current end position of the pipe
 	writeTimer     *time.Timer        // Timer for write timeout
 	writeQueueLen  int64              // Length of pending writes in the queue
+	client         *common.Client
 }
 
 // setup initializes all necessary fields for the BlobUpload
@@ -123,7 +124,7 @@ func (w *BlobUpload) startUpload() {
 
 	duration := time.Since(startTime)
 	if err != nil {
-		common.ReportError("Failed to upload file %v after %v", err, w.BlobFile.Meta.Key, duration)
+		w.client.Logger.Error("Failed to upload file %v after %v", err, w.BlobFile.Meta.Key, duration)
 	} else {
 		log.Printf("Successfully uploaded file %s in %v", w.BlobFile.Meta.Key, duration)
 	}
