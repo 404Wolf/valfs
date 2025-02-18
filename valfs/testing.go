@@ -1,4 +1,4 @@
-package fuse
+package valfs
 
 import (
 	"bufio"
@@ -12,6 +12,8 @@ import (
 	"github.com/404wolf/valfs/common"
 	"github.com/404wolf/valgo"
 )
+
+const BinaryName = "build"
 
 // TestData holds information about the test environment
 type TestData struct {
@@ -68,18 +70,26 @@ func SetupTests(t *testing.T) TestData {
 
 	// Create a temporary directory for the test
 	testDir, err := os.MkdirTemp("", "valfs-tests-")
+	testLogOut := filepath.Join("/tmp", filepath.Base(testDir)+".log")
 	if err != nil {
 		t.Fatalf("Failed to create temporary directory: %v", err)
 	}
 
 	// Path to the valfs binary
-	valfsPath := filepath.Join(projectRoot, "valfs")
+	valfsPath := filepath.Join(projectRoot, BinaryName)
 
 	var cmd *exec.Cmd
 
 	// Mount the valfs file system
 	mount := func() {
-		cmd = exec.Command(valfsPath, "mount", testDir, "--verbose", "--no-refresh")
+		cmd = exec.Command(
+			valfsPath,
+			"mount",
+			"--verbose",
+			"--log-file",
+			testLogOut,
+			testDir,
+		)
 		cmd.Env = os.Environ()
 		cmd.Dir = projectRoot
 

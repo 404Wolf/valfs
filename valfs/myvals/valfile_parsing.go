@@ -1,4 +1,4 @@
-package fuse
+package valfs
 
 import (
 	"errors"
@@ -142,7 +142,7 @@ func (v *ValPackage) Len() (int, error) {
 func (v *ValPackage) UpdateVal(contents string) error {
 	code, frontmatter, err := DeconstructVal(contents)
 	if err != nil {
-		common.ReportError("Error deconstructing val", err)
+		v.client.Logger.Error("Error deconstructing val", err)
 		return err
 	}
 

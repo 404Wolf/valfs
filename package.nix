@@ -1,7 +1,7 @@
 {buildGoModule, ...}:
 buildGoModule {
   name = "valfs";
-  vendorHash = "sha256-wJ2k99i6yXUT+LV6AKLPaJke4xv/dZt47oKPGeQyWoU=";
+  vendorHash = "sha256-4QNj+eFxEV3fciBB1GUA5vTCx+ElrwvQWHMH8qzOCoE=";
   doCheck = false;
   src = ./.;
 }

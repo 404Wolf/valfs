@@ -1,4 +1,4 @@
-package fuse
+package valfs
 
 import (
 	"context"

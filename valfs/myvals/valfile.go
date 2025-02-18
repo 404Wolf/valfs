@@ -1,9 +1,8 @@
-package fuse
+package valfs
 
 import (
 	"context"
 	"errors"
-	"log"
 	"syscall"
 	"time"
 
@@ -53,7 +52,7 @@ func getValVersionCreatedAt(val valgo.ExtendedVal, client *common.Client) *time.
 		versionList, _, err := client.APIClient.ValsAPI.ValsList(ctx,
 			val.Id).Offset(0).Limit(1).Execute()
 		if err != nil {
-			common.ReportError("Error fetching version list", err)
+			client.Logger.Error("Error fetching version list", err)
 		}
 		modified = &versionList.Data[0].CreatedAt
 	}
@@ -72,7 +71,7 @@ func NewValFileFromBasicVal(
 	val valgo.BasicVal,
 	client *common.Client,
 ) (*ValFile, error) {
-	log.Println("Create new val file named", val.Name, "from basic val")
+	client.Logger.Info("Create new val file from basic val", "name", val.Name)
 
 	// Create a val file and get a reference
 	valFile := &ValFile{
@@ -92,7 +91,7 @@ func NewValFileFromExtendedVal(
 	val valgo.ExtendedVal,
 	client *common.Client,
 ) (*ValFile, error) {
-	log.Println("Create new val file named", val.Name, "from extended val")
+	client.Logger.Info("Create new val file from extended val", "name", val.Name)
 
 	return &ValFile{
 		BasicData:    val.ToBasicVal(),
@@ -120,15 +119,15 @@ func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 	errno syscall.Errno,
 ) {
 	if f.ExtendedData == nil {
-		log.Println("Valfile was lazy. Now getting extended val data for", f.BasicData.Name)
+		f.client.Logger.Info("Valfile was lazy. Now getting extended val data", "name", f.BasicData.Name)
 		extVal, _, err := f.client.APIClient.ValsAPI.ValsGet(ctx, f.BasicData.Id).Execute()
 		if err != nil {
-			log.Println("Error fetching val", err)
+			f.client.Logger.Error("Error fetching val", "error", err)
 			return nil, 0, syscall.EIO
 		}
 		f.ExtendedData = extVal
 	}
-	log.Println("Opening val file", f.BasicData.Name)
+	f.client.Logger.Info("Opening val file", "name", f.BasicData.Name)
 
 	// Create a new file handle for the val
 	fh = &ValFileHandle{
@@ -151,7 +150,7 @@ func (fh *ValFileHandle) Read(
 	if err != nil {
 		return nil, syscall.EIO
 	}
-	log.Println("Reading val file", extVal)
+	fh.client.Logger.Info("Reading val file", "val", extVal)
 
 	valPackage := NewValPackage(fh.client, extVal)
 	content, err := valPackage.ToText()
@@ -176,12 +175,12 @@ func (c *ValFile) Write(
 	off int64,
 ) (written uint32, errno syscall.Errno) {
 	prevExtVal, err := c.GetExtendedData(ctx)
-	log.Println("Writing to val file", prevExtVal)
+	c.client.Logger.Info("Writing to val file", "val", prevExtVal.GetId())
 
 	// Create new packed file contents
-	newValPackage := ValPackage{Val: prevExtVal}
+	newValPackage := NewValPackage(c.client, prevExtVal)
 	if err != nil {
-		log.Println("Error updating val package", err)
+		c.client.Logger.Error("Error updating val package", "error", err)
 		return 0, syscall.EIO
 	}
 	newValPackage.UpdateVal(string(data))
@@ -197,38 +196,40 @@ func (c *ValFile) Write(
 
 	valCreateReqData.SetPrivacy(prevExtVal.GetPrivacy())
 	valCreateReqData.SetReadme(prevExtVal.GetReadme())
-	log.Printf("New val data %v", valCreateReqData)
+	c.client.Logger.Info("New val data", "data", valCreateReqData)
 
 	// Make the request to update the val
 	valCreateReq := c.client.APIClient.ValsAPI.ValsCreateVersion(ctx, prevExtVal.GetId()).ValsCreateRequest(*valCreateReqData)
 	_, _, err = valCreateReq.Execute()
 	if err != nil {
-		log.Println("Error updating val", err)
+		c.client.Logger.Error("Error updating val", "error", err)
 		return 0, syscall.EIO
 	}
-	log.Println("Successfully updated val", prevExtVal.Name)
+	c.client.Logger.Info("Successfully updated val", "name", prevExtVal.Name)
 
 	// Because of a bug in val town we also need to "update" the val
 	valUpdateReqData := valgo.NewValsUpdateRequestWithDefaults()
 	valUpdateReqData.SetPrivacy(extVal.GetPrivacy())
 	valUpdateReqData.SetReadme(extVal.GetReadme())
-	log.Printf("New val data %v", valUpdateReqData)
+	c.client.Logger.Info("New val data", "data", valUpdateReqData)
 	_, err = c.client.APIClient.ValsAPI.ValsUpdate(ctx, extVal.GetId()).ValsUpdateRequest(*valUpdateReqData).Execute()
 	if err != nil {
-		log.Println("Error updating val", err)
+		c.client.Logger.Error("Error updating val", "error", err)
 		return 0, syscall.EIO
 	}
-	log.Println("Updated val file", prevExtVal.Name)
+	c.client.Logger.Info("Updated val file", "name", prevExtVal.Name)
 
 	// And finally, retreive the val's extended data again
-	extVal, _, err = c.client.APIClient.ValsAPI.ValsGet(ctx, prevExtVal.GetId()).Execute()
-	if err != nil {
-		common.ReportError("Error fetching val", err)
-		return 0, syscall.EIO
+	if !c.client.Config.StaticMeta {
+		extVal, _, err = c.client.APIClient.ValsAPI.ValsGet(ctx, prevExtVal.GetId()).Execute()
+		if err != nil {
+			c.client.Logger.Error("Error fetching val", "error", err)
+			return 0, syscall.EIO
+		}
+		c.ExtendedData = extVal
+		c.ModifiedNow()
 	}
-	c.ExtendedData = extVal
 
-	c.ModifiedNow()
 	return uint32(len(data)), syscall.F_OK
 }
 
@@ -238,7 +239,7 @@ func (f *ValFile) Getattr(
 	fh fs.FileHandle,
 	out *fuse.AttrOut,
 ) syscall.Errno {
-	log.Println("Getting attributes for val file", f.BasicData.Name)
+	f.client.Logger.Info("Getting attributes for val file", "name", f.BasicData.Name)
 
 	// Do not fetch extended data if we haven't already, just use placeholder!
 	if f.ExtendedData == nil {
@@ -254,7 +255,7 @@ func (f *ValFile) Getattr(
 	valPackage := NewValPackage(f.client, f.ExtendedData)
 	contentLen, err := valPackage.Len()
 	if err != nil {
-		log.Println("Error getting content length", err)
+		f.client.Logger.Error("Error getting content length", "error", err)
 		return syscall.EIO
 	}
 
@@ -265,8 +266,11 @@ func (f *ValFile) Getattr(
 	modified := &f.ModifiedAt
 	out.SetTimes(modified, modified, modified)
 
-	log.Println("Got attributes for val file", f.BasicData.Name)
-	log.Println("Size:", out.Size, "Mode:", out.Mode, "Modified:", *modified)
+	f.client.Logger.Info("Got attributes for val file",
+		"name", f.BasicData.Name,
+		"size", out.Size,
+		"mode", out.Mode,
+		"modified", *modified)
 
 	return syscall.F_OK
 }
@@ -279,7 +283,7 @@ func (f *ValFile) Setattr(
 	in *fuse.SetAttrIn,
 	out *fuse.AttrOut,
 ) syscall.Errno {
-	log.Println("Setting attributes for val file", f.BasicData.Name)
+	f.client.Logger.Info("Setting attributes for val file", "name", f.BasicData.Name)
 
 	out.Size = in.Size
 	out.Mode = VAL_FILE_FLAGS
