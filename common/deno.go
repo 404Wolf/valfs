@@ -33,11 +33,6 @@ func (dc *DenoCacher) DenoCache(glob string) error {
 	defer dc.mutex.Unlock()
 
 	for _, match := range matches {
-		// Here you would typically:
-		// 1. Read the file
-		// 2. Process its contents
-		// 3. Store in cache
-		// This is a simplified example
 		dc.cache[match] = []byte{}
 		dc.timestamp[match] = time.Now()
 	}

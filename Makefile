@@ -1,4 +1,5 @@
-ALL_GO_FILES := $(shell find . -type f -name '*.go')
+ALL_GO_FILES := $(shell find . -name '*.go')
+
 all: build
 
 build: $(ALL_GO_FILES)
@@ -7,9 +8,8 @@ build: $(ALL_GO_FILES)
 run: build
 	./build
 
-test:
-  # give it two chances, in case of unexpected API errors or ratelimits
-	GOMAXPROCS=1 go test -v ./... -failfast || sleep 60 && go test -v ./... -run="$(FAILED)"
+test: build
+	GOMAXPROCS=1 go test -v ./...
 
 clean:
 	rm -f build

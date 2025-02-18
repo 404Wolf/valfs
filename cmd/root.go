@@ -2,26 +2,15 @@ package cmd
 
 import (
 	"fmt"
-	"io"
-	"log"
-	"os"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
 
 var (
-	logger  *log.Logger
 	verbose bool
+	logFile string
 )
-
-func initLogger() {
-	if verbose {
-		log.SetOutput(os.Stdout)
-	} else {
-		log.SetOutput(io.Discard)
-	}
-}
 
 var rootCmd = &cobra.Command{
 	Use:   "valfs",
@@ -38,8 +27,8 @@ func handleShebangCall(args []string) {
 }
 
 func InitRoot() {
-	cobra.OnInitialize(initLogger)
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+	rootCmd.PersistentFlags().StringVar(&logFile, "log-file", "", "log file path")
 
 	ValfsInit()
 }

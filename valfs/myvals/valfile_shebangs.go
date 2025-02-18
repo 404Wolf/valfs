@@ -1,7 +1,7 @@
 package valfs
 
 import (
-	"log"
+	"fmt"
 	"os"
 )
 
@@ -9,7 +9,8 @@ import (
 func getCurrentExecutablePath() string {
 	execPath, err := os.Executable()
 	if err != nil {
-		log.Fatal(err)
+    fmt.Println("Error getting executable path", err)
+    panic(err)
 	}
 	return execPath
 }

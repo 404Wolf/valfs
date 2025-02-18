@@ -28,7 +28,7 @@ type ValfsConfig struct {
 	// Whether to enable go fuse's debug mode
 	GoFuseDebug bool
 
-  // Whether to only show file metadata that is static (omit versions like ?v=
-  // in urls, or the version field, which change on writes)
-  StaticMeta bool
+	// Whether to only show file metadata that is static (omit versions like ?v=
+	// in urls, or the version field, which change on writes)
+	StaticMeta bool
 }

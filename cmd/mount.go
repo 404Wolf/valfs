@@ -51,6 +51,8 @@ var mountCmd = &cobra.Command{
 				context.Background(),
 				valfsConfig.AutoRefresh,
 				*valfsConfig,
+				logFile,
+				verbose,
 			),
 		)
 

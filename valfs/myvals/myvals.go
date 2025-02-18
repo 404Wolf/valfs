@@ -2,7 +2,6 @@ package valfs
 
 import (
 	"context"
-	"log"
 	"syscall"
 	"time"
 
@@ -42,7 +41,7 @@ func NewMyVals(parent *fs.Inode, client *common.Client, ctx context.Context) *My
 		go func() {
 			for range ticker.C {
 				refreshVals(ctx, &myValsDir.Inode, *client)
-				log.Println("Refreshed vals")
+				client.Logger.Info("Refreshed vals")
 			}
 		}()
 	}
@@ -52,7 +51,7 @@ func NewMyVals(parent *fs.Inode, client *common.Client, ctx context.Context) *My
 
 // Handle deletion of a file by also deleting the val
 func (c *MyVals) Unlink(ctx context.Context, name string) syscall.Errno {
-	log.Printf("Deleting val %s", name)
+	c.client.Logger.Infof("Deleting val %s", name)
 	child := c.GetChild(name)
 	if child == nil {
 		return syscall.ENOENT
@@ -66,10 +65,10 @@ func (c *MyVals) Unlink(ctx context.Context, name string) syscall.Errno {
 
 	_, err := c.client.APIClient.ValsAPI.ValsDelete(ctx, valFile.BasicData.Id).Execute()
 	if err != nil {
-		common.ReportError("Error deleting val", err)
+		c.client.Logger.Error("Error deleting val", err)
 		return syscall.EIO
 	}
-	log.Printf("Deleted val %s", valFile.BasicData.Id)
+	c.client.Logger.Infof("Deleted val %s", valFile.BasicData.Id)
 
 	return 0
 }
@@ -86,7 +85,7 @@ func (c *MyVals) Create(
 	if valType == Unknown {
 		return nil, nil, 0, syscall.EINVAL
 	}
-	log.Printf("Creating val %s of type %s", valName, valType)
+	c.client.Logger.Infof("Creating val %s of type %s", valName, valType)
 
 	// Make a request to create the val
 	templateCode := GetTemplate(valType)
@@ -98,16 +97,16 @@ func (c *MyVals) Create(
 
 	// Check if the request was successful
 	if err != nil {
-		common.ReportError("Error creating val", err)
+		c.client.Logger.Error("Error creating val", err)
 		return nil, nil, 0, syscall.EIO
 	} else {
-		log.Printf("Created val %v", val)
+		c.client.Logger.Infof("Created val %v", val)
 	}
 
 	// Create a val file that we can hand over
 	valFile, err := NewValFileFromExtendedVal(*val, c.client)
 	if err != nil {
-		common.ReportError("Error creating val file", err)
+		c.client.Logger.Error("Error creating val file", err)
 		return nil, nil, 0, syscall.EIO
 	}
 	newInode := c.NewPersistentInode(
@@ -139,7 +138,7 @@ func (c *MyVals) Rename(
 ) syscall.Errno {
 	// Check if we're moving between directories
 	if newParent.EmbeddedInode().StableAttr().Ino != c.Inode.StableAttr().Ino {
-		log.Printf("Cannot move val out of the `myvals` directory")
+		c.client.Logger.Info("Cannot move val out of the `myvals` directory")
 		return syscall.EINVAL
 	}
 
@@ -168,14 +167,14 @@ func (c *MyVals) Rename(
 	// Update the val in the backend
 	_, err := c.client.APIClient.ValsAPI.ValsUpdate(ctx, valFile.BasicData.Id).ValsUpdateRequest(*valUpdateReq).Execute()
 	if err != nil {
-		log.Printf("Error updating val %s: %v", oldName, err)
+		c.client.Logger.Errorf("Error updating val %s: %v", oldName, err)
 		return syscall.EIO
 	}
 
 	// Fetch what the change produced
 	extVal, _, err := c.client.APIClient.ValsAPI.ValsGet(ctx, valFile.BasicData.Id).Execute()
 	if err != nil {
-		common.ReportError("Error fetching val", err)
+		c.client.Logger.Error("Error fetching val", err)
 		return syscall.EIO
 	}
 

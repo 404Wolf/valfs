@@ -2,7 +2,6 @@ package valfs
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -47,7 +46,7 @@ func (c *ValFS) AddDenoJSON(ctx context.Context) {
 
 // Mount the filesystem
 func (c *ValFS) Mount(doneSettingUp func()) error {
-	log.Printf("Mounting ValFS file system at %s", c.client.Config.MountPoint)
+	c.client.Logger.Info("Mounting ValFS file system at ", c.client.Config.MountPoint)
 	server, err := fs.Mount(c.client.Config.MountPoint, c, &fs.Options{
 		MountOptions: fuse.MountOptions{
 			Debug: c.client.Config.GoFuseDebug,
@@ -69,7 +68,7 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 	})
 
 	if err != nil {
-		log.Fatal(err)
+		c.client.Logger.Fatal("Mount failed", "error", err)
 		return err
 	}
 	if c.client.Config.AutoUnmountOnExit {
@@ -78,22 +77,22 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 
 		go func() {
 			<-signalChan
-			log.Println("Received interrupt signal. Unmounting...")
+			c.client.Logger.Info("Received interrupt signal. Unmounting...")
 			err := server.Unmount()
 			if err != nil {
-				log.Printf("Error unmounting: %v", err)
+				c.client.Logger.Error("Error unmounting", "error", err)
 			}
 			os.Exit(1)
 		}()
 
 		defer func() {
-			log.Printf("Unmounting %s", c.client.Config.MountPoint)
+			c.client.Logger.Info("Unmounting", "mountPoint", c.client.Config.MountPoint)
 			err := server.Unmount()
 			if err != nil {
-				log.Printf("Error unmounting: %v", err)
+				c.client.Logger.Error("Error unmounting", "error", err)
 			}
 		}()
-		log.Printf("Unmount by calling 'umount %s'\n", c.client.Config.MountPoint)
+		c.client.Logger.Info("Unmount by calling 'umount'", "mountPoint", c.client.Config.MountPoint)
 	}
 
 	server.Wait()
@@ -113,9 +112,10 @@ func (c *ValFS) RunDenoCache(glob string) {
 		go func() {
 			defer c.denoCacheMutex.Unlock()
 
-			log.Printf("Caching Deno libraries")
-			log.Print("Executing deno cache --allow-import " + c.client.Config.MountPoint + "/myvals" + glob)
-			cmd := exec.Command("deno", "cache", "--allow-import", c.client.Config.MountPoint+"/myvals"+glob)
+			c.client.Logger.Info("Caching Deno libraries")
+			cacheCmd := c.client.Config.MountPoint + "/myvals" + glob
+			c.client.Logger.Info("Executing deno cache", "command", "deno cache --allow-import "+cacheCmd)
+			cmd := exec.Command("deno", "cache", "--allow-import", cacheCmd)
 			cmd.Start()
 			cmd.Process.Release()
 		}()
@@ -132,7 +132,7 @@ func (c *ValFS) ValToValFile(
 ) *valfile.ValFile {
 	valFile, err := valfile.NewValFileFromExtendedVal(val, c.client)
 	if err != nil {
-		log.Fatal("Error creating val file", err)
+		c.client.Logger.Fatal("Error creating val file", "error", err)
 	}
 	c.Inode.NewPersistentInode(
 		ctx,

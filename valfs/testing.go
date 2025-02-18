@@ -70,6 +70,7 @@ func SetupTests(t *testing.T) TestData {
 
 	// Create a temporary directory for the test
 	testDir, err := os.MkdirTemp("", "valfs-tests-")
+	testLogOut := filepath.Join("/tmp", filepath.Base(testDir)+".log")
 	if err != nil {
 		t.Fatalf("Failed to create temporary directory: %v", err)
 	}
@@ -81,7 +82,13 @@ func SetupTests(t *testing.T) TestData {
 
 	// Mount the valfs file system
 	mount := func() {
-		cmd = exec.Command(valfsPath, "mount", testDir, "--verbose", "--no-refresh")
+		cmd = exec.Command(
+			valfsPath,
+			"mount",
+			"--log-file",
+			testLogOut,
+			testDir,
+		)
 		cmd.Env = os.Environ()
 		cmd.Dir = projectRoot
 
