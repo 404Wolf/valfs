@@ -3,7 +3,6 @@ package valfs
 import (
 	"context"
 	"os"
-	"os/exec"
 	"os/signal"
 	"sync"
 	"syscall"
@@ -98,30 +97,4 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 
 	server.Wait()
 	return nil
-}
-
-func (c *ValFS) RunDenoCache(glob string) {
-	c.denoCacheMutex.Lock()
-
-	// Check if enough time has passed since last run
-	if time.Since(c.denoCacheLastRun) < time.Second {
-		return
-	}
-
-	// If the vals dir is enabled, execute a deno cache on it
-	if c.client.Config.EnableValsDirectory {
-		go func() {
-			defer c.denoCacheMutex.Unlock()
-
-			common.Logger.Info("Caching Deno libraries")
-			cacheCmd := c.client.Config.MountPoint + "/vals" + glob
-			common.Logger.Info("Executing deno cache", "command", "deno cache --allow-import "+cacheCmd)
-			cmd := exec.Command("deno", "cache", "--allow-import", cacheCmd)
-			cmd.Start()
-			cmd.Process.Release()
-		}()
-	}
-
-	// Update the last cache time to allow for a cooldown
-	c.denoCacheLastRun = time.Now()
 }

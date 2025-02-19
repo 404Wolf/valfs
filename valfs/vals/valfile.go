@@ -132,9 +132,7 @@ func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 		client:  f.client,
 	}
 
-	filename := ConstructFilename(f.BasicData.GetName(), ValType(f.BasicData.GetType()))
-	waitThenMaybeDenoCache(filename, f.client)
-
+	// Return FOPEN_DIRECT_IO so content is not cached
 	return fh, fuse.FOPEN_DIRECT_IO, syscall.F_OK
 }
 
