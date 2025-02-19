@@ -14,8 +14,6 @@ import (
 	common "github.com/404wolf/valfs/common"
 )
 
-const WAIT_BEFORE_DENO_CACHING = time.Second * 1
-
 // The folder with all of my vals in it
 type MyVals struct {
 	fs.Inode
@@ -124,10 +122,7 @@ func (c *MyVals) Create(
 	valFile.ModifiedNow()
 
 	// Schedule a deno cache for after the file gets created to cache new modules
-	time.AfterFunc(
-		WAIT_BEFORE_DENO_CACHING*time.Millisecond,
-		func() { c.client.DenoCacher.DenoCache(name) },
-	)
+	waitThenMaybeDenoCache(name, c.client)
 
 	// Create a file handle
 	return newInode, &fileHandle, fuse.FOPEN_DIRECT_IO, syscall.F_OK

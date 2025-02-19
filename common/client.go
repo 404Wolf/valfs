@@ -12,7 +12,6 @@ type Client struct {
 	APIClient  *APIClient
 	APIKey     string
 	Config     ValfsConfig
-	DenoCacher *DenoCacher
 	Id         uint64
 	Started    time.Time
 	User       valgo.User
@@ -49,7 +48,6 @@ func NewClient(
 		APIClient:  apiClient,
 		APIKey:     apiKey,
 		Config:     config,
-		DenoCacher: NewDenoCacher(),
 		Id:         rand.Uint64(),
 		Started:    time.Now(),
 		User:       *user,
