@@ -12,24 +12,29 @@ import (
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
 
+// VAL_FILE_FLAGS defines the file permissions and type for val files
+// S_IFREG indicates a regular file, 0o777 gives full rwx permissions
 const VAL_FILE_FLAGS = syscall.S_IFREG | 0o777
 
+// ValFile represents a file in the filesystem that corresponds to a val
 type ValFile struct {
 	fs.Inode
 
-	ModifiedAt   time.Time
-	BasicData    valgo.BasicVal
-	ExtendedData *valgo.ExtendedVal
-	client       *common.Client
-	parent       ValsContainer
+	ModifiedAt   time.Time          // Last modification timestamp
+	BasicData    valgo.BasicVal     // Basic val metadata
+	ExtendedData *valgo.ExtendedVal // Full val data (loaded on demand)
+	client       *common.Client     // Client for API operations
+	parent       ValsContainer      // Parent directory containing this val file
 }
 
+// Interface compliance checks
 var _ = (fs.NodeSetattrer)((*ValFile)(nil))
 var _ = (fs.NodeGetattrer)((*ValFile)(nil))
 var _ = (fs.NodeWriter)((*ValFile)(nil))
 var _ = (fs.NodeOpener)((*ValFile)(nil))
 var _ = (fs.FileReader)((*ValFileHandle)(nil))
 
+// GetExtendedData fetches the full val data if not already loaded
 func (f *ValFile) GetExtendedData(ctx context.Context) (*valgo.ExtendedVal, error) {
 	if f.ExtendedData == nil {
 		extVal, err := f.parent.GetValOps().Read(ctx, f.BasicData.GetId())
@@ -41,6 +46,7 @@ func (f *ValFile) GetExtendedData(ctx context.Context) (*valgo.ExtendedVal, erro
 	return f.ExtendedData, nil
 }
 
+// getValVersionCreatedAt retrieves the creation timestamp of a val version
 func getValVersionCreatedAt(val valgo.ExtendedVal, client *common.Client) *time.Time {
 	modified := val.VersionCreatedAt
 	if modified == nil {
@@ -55,6 +61,7 @@ func getValVersionCreatedAt(val valgo.ExtendedVal, client *common.Client) *time.
 	return modified
 }
 
+// NewValFileFromBasicVal creates a new ValFile from basic val metadata
 func NewValFileFromBasicVal(
 	ctx context.Context,
 	val valgo.BasicVal,
@@ -73,6 +80,7 @@ func NewValFileFromBasicVal(
 	return valFile, nil
 }
 
+// NewValFileFromExtendedVal creates a new ValFile from complete val data
 func NewValFileFromExtendedVal(
 	val valgo.ExtendedVal,
 	client *common.Client,
@@ -89,20 +97,24 @@ func NewValFileFromExtendedVal(
 	}, nil
 }
 
+// ValFileHandle represents an open file handle
 type ValFileHandle struct {
 	ValFile *ValFile
 	client  *common.Client
 }
 
+// ModifiedNow updates the file's modification time to current time
 func (f *ValFile) ModifiedNow() {
 	f.ModifiedAt = time.Now()
 }
 
+// Open handles opening the file and creates a new file handle
 func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 	fh fs.FileHandle,
 	fuseFlags uint32,
 	errno syscall.Errno,
 ) {
+	// Load extended data if not already loaded
 	if f.ExtendedData == nil {
 		common.Logger.Info("Valfile was lazy. Now getting extended val data", "name", f.BasicData.Name)
 		extVal, err := f.parent.GetValOps().Read(ctx, f.BasicData.Id)
@@ -125,6 +137,7 @@ func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 	return fh, fuse.FOPEN_DIRECT_IO, syscall.F_OK
 }
 
+// Read handles reading data from the file
 func (fh *ValFileHandle) Read(
 	ctx context.Context,
 	dest []byte,
@@ -150,6 +163,7 @@ func (fh *ValFileHandle) Read(
 	return fuse.ReadResultData(bytes[off:end]), syscall.F_OK
 }
 
+// Write handles writing data to the file
 func (c *ValFile) Write(
 	ctx context.Context,
 	fh fs.FileHandle,
@@ -173,7 +187,7 @@ func (c *ValFile) Write(
 		return 0, syscall.EIO
 	}
 
-	// Update metadata if needed
+	// Update metadata based on configuration
 	if !c.client.Config.StaticMeta {
 		extVal, err = c.parent.GetValOps().Read(ctx, prevExtVal.GetId())
 		if err != nil {
@@ -192,6 +206,7 @@ func (c *ValFile) Write(
 	return uint32(len(data)), syscall.F_OK
 }
 
+// Getattr retrieves the file attributes
 func (f *ValFile) Getattr(
 	ctx context.Context,
 	fh fs.FileHandle,
@@ -199,6 +214,7 @@ func (f *ValFile) Getattr(
 ) syscall.Errno {
 	common.Logger.Info("Getting attributes for val file", "name", f.BasicData.Name)
 
+	// Handle basic attributes if extended data isn't loaded
 	if f.ExtendedData == nil {
 		out.Mode = VAL_FILE_FLAGS
 		out.Size = uint64(len(f.BasicData.GetCode()) + 500)
@@ -229,6 +245,7 @@ func (f *ValFile) Getattr(
 	return syscall.F_OK
 }
 
+// Setattr sets the file attributes
 func (f *ValFile) Setattr(
 	ctx context.Context,
 	fh fs.FileHandle,
