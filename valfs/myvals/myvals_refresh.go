@@ -38,7 +38,7 @@ func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) erro
 			root.NewPersistentInode(ctx, valFile, fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
 			root.AddChild(filename, &valFile.Inode, true)
 			previousValIds[newVal.GetId()] = valFile
-			common.Logger.Infof("Added val %s, found fresh on valtown", newVal.GetId())
+      common.Logger.Infof("Added val, found fresh on valtown: %v", newVal)
 		}
 
 		// If the val already existed in our collection but is newer then update it in-place

@@ -27,6 +27,7 @@
               go
               gopls
               delve
+              deno
               cobra-cli
               openapi-generator-cli
               inotify-tools

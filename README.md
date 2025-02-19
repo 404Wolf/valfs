@@ -38,14 +38,13 @@ know!
 
 # Using Valfs
 
-At the top level, ValFS will create two folders, `myvals` and `myblobs`, and a
-`deno.json`. The `deno.json` has settings to simulate val.town's development
-environment. Deno will automatically cache all packages referenced in vals, so
-that you get nice LSP completions.
+At the top level, ValFS will create a `myvals` folder and a `deno.json`. The
+`deno.json` has settings to simulate val.town's development environment. Deno
+will automatically cache all packages referenced in vals, so that you get nice
+LSP completions.
 
-When you update, remove, or create vals in `valfs` or on
-`val.town`'s website, the opposite should automatically update to reflect
-changes.
+When you update, remove, or create vals in `valfs` or on `val.town`'s website,
+the opposite should automatically update to reflect changes.
 
 ### Vals Directory
 
@@ -102,6 +101,7 @@ Also notice the magic shebang in the val files! Coming soon... you'll be able
 to execute vals.
 
 ### Blobs Directory
+(coming soon!)
 
 <img src="./images/blobs.png" width="30%" alt="A binary in blobstore">
 
@@ -114,6 +114,7 @@ future, small files might automatically be ram based instead.
 
 # Known Issues
 
+- Val town doesn't have API support for creating/updating chron vals
 - When you "hop to definition" for a val town esm module (esm.town) val town
   serves deno modules with a name like "valname?v=22" without a ".tsx" at the
   end, so some editors won't give syntax highlighting. You can manually tell your

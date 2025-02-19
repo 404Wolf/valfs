@@ -63,7 +63,7 @@ func (c *MyVals) Unlink(ctx context.Context, name string) syscall.Errno {
 
 	_, err := c.client.APIClient.ValsAPI.ValsDelete(ctx, valFile.BasicData.Id).Execute()
 	if err != nil {
-		common.Logger.Error("Error deleting val", err)
+		common.Logger.Error("Error deleting val, %s", err)
 		return syscall.EIO
 	}
 	common.Logger.Infof("Deleted val %s", valFile.BasicData.Id)
@@ -104,7 +104,7 @@ func (c *MyVals) Create(
 	// Create a val file that we can hand over
 	valFile, err := NewValFileFromExtendedVal(*val, c.client)
 	if err != nil {
-		common.Logger.Error("Error creating val file", err)
+		common.Logger.Error("Error creating val file, %s", err)
 		return nil, nil, 0, syscall.EIO
 	}
 	newInode := c.NewPersistentInode(
