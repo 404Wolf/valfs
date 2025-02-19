@@ -64,4 +64,3 @@ func (c *APIClient) RawRequest(
 	// Send the request
 	return client.Do(req)
 }
-

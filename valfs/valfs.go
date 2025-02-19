@@ -15,8 +15,8 @@ import (
 
 	common "github.com/404wolf/valfs/common"
 	deno "github.com/404wolf/valfs/valfs/deno"
-	vals "github.com/404wolf/valfs/valfs/vals"
 	valfile "github.com/404wolf/valfs/valfs/vals"
+	vals "github.com/404wolf/valfs/valfs/vals"
 )
 
 // Top level inode of a val file system
@@ -34,8 +34,8 @@ func NewValFS(client *common.Client) *ValFS {
 
 func (c *ValFS) AddValsDir(ctx context.Context) {
 	common.Logger.Info("Adding vals directory to valfs")
-	valsDir := vals.NewVals(&c.Inode, c.client, ctx)
-	c.AddChild("vals", &valsDir.Inode, true)
+	valsDir := vals.NewValsDir(&c.Inode, c.client, ctx)
+	c.AddChild("vals", valsDir.GetInode(), true)
 }
 
 // Add the deno.json file which provides the user context about how to run and
@@ -89,7 +89,7 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 		}()
 
 		defer func() {
-			common.Logger.Info("Unmounting", "mountPoint", c.client.Config.MountPoint)
+			common.Logger.Info("Unmounting valfs @ %s", c.client.Config.MountPoint)
 			err := server.Unmount()
 			if err != nil {
 				common.Logger.Error("Error unmounting", "error", err)
