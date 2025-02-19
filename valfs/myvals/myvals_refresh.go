@@ -18,10 +18,10 @@ func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) erro
 	for _, newVal := range newVals {
 		newValsIdsToBasicVals[newVal.GetId()] = newVal
 	}
-	client.Logger.Infof("Fetched %d vals", len(newVals))
+	common.Logger.Infof("Fetched %d vals", len(newVals))
 
 	if err != nil {
-		client.Logger.Error("Error fetching vals", err)
+		common.Logger.Error("Error fetching vals", err)
 		return err
 	}
 
@@ -31,14 +31,14 @@ func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) erro
 		if !exists {
 			valFile, err := NewValFileFromBasicVal(ctx, newVal, &client)
 			if err != nil {
-				client.Logger.Error("Error creating val file", err)
+				common.Logger.Error("Error creating val file", err)
 				return err
 			}
 			filename := ConstructFilename(newVal.GetName(), ValType(newVal.GetType()))
 			root.NewPersistentInode(ctx, valFile, fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
 			root.AddChild(filename, &valFile.Inode, true)
 			previousValIds[newVal.GetId()] = valFile
-			client.Logger.Infof("Added val %s, found fresh on valtown", newVal.GetId())
+			common.Logger.Infof("Added val %s, found fresh on valtown", newVal.GetId())
 		}
 
 		// If the val already existed in our collection but is newer then update it in-place
@@ -46,7 +46,7 @@ func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) erro
 			prevValFile.BasicData = newVal
 			prevValFile.ModifiedNow()
 			prevValFile.EmbeddedInode().Root().NotifyContent(0, 0)
-			client.Logger.Infof("Updated val %s, found newer on valtown", newVal.GetId())
+			common.Logger.Infof("Updated val %s, found newer on valtown", newVal.GetId())
 		}
 	}
 
@@ -56,7 +56,7 @@ func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) erro
 			filename := ConstructFilename(oldVal.BasicData.GetName(), ValType(oldVal.BasicData.GetType()))
 			root.RmChild(filename)
 			delete(previousValIds, oldVal.BasicData.GetId())
-			client.Logger.Infof("Removed val %s no longer found on valtown", oldVal.BasicData.GetId())
+			common.Logger.Infof("Removed val %s no longer found on valtown", oldVal.BasicData.GetId())
 		}
 	}
 
@@ -67,12 +67,12 @@ const lookupCap = 99
 
 // Get a list of all the vals belonging to the authed user
 func getMyVals(ctx context.Context, client common.Client) ([]valgo.BasicVal, error) {
-	client.Logger.Info("Fetching all of my vals")
+	common.Logger.Info("Fetching all of my vals")
 
 	// Fetch my ID
 	meResp, _, err := client.APIClient.MeAPI.MeGet(context.Background()).Execute()
 	if err != nil {
-		client.Logger.Error(err.Error())
+		common.Logger.Error(err.Error())
 		return nil, err
 	}
 
@@ -81,7 +81,10 @@ func getMyVals(ctx context.Context, client common.Client) ([]valgo.BasicVal, err
 	allVals := []valgo.BasicVal{}
 	for {
 		// Request the next batch of vals
-		vals, _, err := client.APIClient.UsersAPI.UsersVals(ctx, meResp.GetId()).Offset(int32(offset)).Limit(99).Execute()
+		request := client.APIClient.UsersAPI.UsersVals(ctx, meResp.GetId())
+		request = request.Offset(int32(offset))
+		request = request.Limit(99)
+		vals, _, err := request.Execute()
 		if err != nil {
 			return nil, err
 		}
@@ -98,7 +101,7 @@ func getMyVals(ctx context.Context, client common.Client) ([]valgo.BasicVal, err
 
 		offset += lookupCap
 	}
-	client.Logger.Infof("Fetched all of my vals. Found %d vals", len(allVals))
+	common.Logger.Infof("Fetched all of my vals. Found %d vals", len(allVals))
 
 	return allVals, nil
 }

@@ -33,6 +33,7 @@ func NewValFS(client *common.Client) *ValFS {
 }
 
 func (c *ValFS) AddMyValsDir(ctx context.Context) {
+	common.Logger.Info("Adding myvals directory to valfs")
 	myValsDir := myvals.NewMyVals(&c.Inode, c.client, ctx)
 	c.AddChild("myvals", &myValsDir.Inode, true)
 }
@@ -40,13 +41,15 @@ func (c *ValFS) AddMyValsDir(ctx context.Context) {
 // Add the deno.json file which provides the user context about how to run and
 // edit their vals
 func (c *ValFS) AddDenoJSON(ctx context.Context) {
+	common.Logger.Info("Adding deno.json to valfs")
 	denoJsonInode := deno.NewDenoJson(&c.Inode, c.client, ctx)
 	c.AddChild("deno.json", denoJsonInode, false)
 }
 
 // Mount the filesystem
 func (c *ValFS) Mount(doneSettingUp func()) error {
-	c.client.Logger.Info("Mounting ValFS file system at ", c.client.Config.MountPoint)
+	common.Logger.Info("Mounting ValFS file system at ", c.client.Config.MountPoint)
+
 	server, err := fs.Mount(c.client.Config.MountPoint, c, &fs.Options{
 		MountOptions: fuse.MountOptions{
 			Debug: c.client.Config.GoFuseDebug,
@@ -68,7 +71,7 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 	})
 
 	if err != nil {
-		c.client.Logger.Fatal("Mount failed", "error", err)
+		common.Logger.Fatal("Mount failed", "error", err)
 		return err
 	}
 	if c.client.Config.AutoUnmountOnExit {
@@ -77,22 +80,22 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 
 		go func() {
 			<-signalChan
-			c.client.Logger.Info("Received interrupt signal. Unmounting...")
+			common.Logger.Info("Received interrupt signal. Unmounting...")
 			err := server.Unmount()
 			if err != nil {
-				c.client.Logger.Error("Error unmounting", "error", err)
+				common.Logger.Error("Error unmounting", "error", err)
 			}
 			os.Exit(1)
 		}()
 
 		defer func() {
-			c.client.Logger.Info("Unmounting", "mountPoint", c.client.Config.MountPoint)
+			common.Logger.Info("Unmounting", "mountPoint", c.client.Config.MountPoint)
 			err := server.Unmount()
 			if err != nil {
-				c.client.Logger.Error("Error unmounting", "error", err)
+				common.Logger.Error("Error unmounting", "error", err)
 			}
 		}()
-		c.client.Logger.Info("Unmount by calling 'umount'", "mountPoint", c.client.Config.MountPoint)
+		common.Logger.Info("Unmount by calling 'umount' ", c.client.Config.MountPoint)
 	}
 
 	server.Wait()
@@ -112,9 +115,9 @@ func (c *ValFS) RunDenoCache(glob string) {
 		go func() {
 			defer c.denoCacheMutex.Unlock()
 
-			c.client.Logger.Info("Caching Deno libraries")
+			common.Logger.Info("Caching Deno libraries")
 			cacheCmd := c.client.Config.MountPoint + "/myvals" + glob
-			c.client.Logger.Info("Executing deno cache", "command", "deno cache --allow-import "+cacheCmd)
+			common.Logger.Info("Executing deno cache", "command", "deno cache --allow-import "+cacheCmd)
 			cmd := exec.Command("deno", "cache", "--allow-import", cacheCmd)
 			cmd.Start()
 			cmd.Process.Release()
@@ -132,7 +135,7 @@ func (c *ValFS) ValToValFile(
 ) *valfile.ValFile {
 	valFile, err := valfile.NewValFileFromExtendedVal(val, c.client)
 	if err != nil {
-		c.client.Logger.Fatal("Error creating val file", "error", err)
+		common.Logger.Fatal("Error creating val file", "error", err)
 	}
 	c.Inode.NewPersistentInode(
 		ctx,

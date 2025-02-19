@@ -25,6 +25,9 @@ type ValfsConfig struct {
 	// Add a directory for your vals
 	EnableValsDirectory bool
 
+	// Add a directory for your blob
+	EnableBlobsDirectory bool
+
 	// Whether to enable go fuse's debug mode
 	GoFuseDebug bool
 

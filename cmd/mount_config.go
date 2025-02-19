@@ -34,6 +34,7 @@ func LoadConfig() *common.ValfsConfig {
 		AutoUnmountOnExit:   viper.GetBool("autoUnmountOnExit"),
 		AutoRefreshInterval: viper.GetInt("autoRefreshInterval"),
 		EnableValsDirectory: viper.GetBool("enableValsDirectory"),
+		EnableBlobsDirectory: viper.GetBool("enableBlobsDirectory"),
 		GoFuseDebug:         viper.GetBool("goFuseDebug"),
 	}
 
