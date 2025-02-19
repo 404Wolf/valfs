@@ -83,6 +83,13 @@ func (c *MyVals) Create(
 	if valType == Unknown {
 		return nil, nil, 0, syscall.EINVAL
 	}
+
+	// Val town doesn't have API support for interval vals yet
+	if valType == Interval {
+		common.Logger.Info("Interval vals are not supported for creation through the val town API yet")
+		return nil, nil, 0, syscall.EINVAL
+	}
+
 	common.Logger.Infof("Creating val %s of type %s", valName, valType)
 
 	// Make a request to create the val
@@ -143,6 +150,10 @@ func (c *MyVals) Rename(
 	// Validate the new filename
 	valName, valType := ExtractFromFilename(newName)
 	if valType == Unknown {
+		return syscall.EINVAL
+	}
+	if valType == Interval {
+		common.Logger.Info("Interval vals are not supported for creation through the val town API yet")
 		return syscall.EINVAL
 	}
 
