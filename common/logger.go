@@ -14,6 +14,7 @@ var Logger *zap.SugaredLogger
 //   - logFile: path to log file (empty string disables file logging)
 //   - logLevel: minimum log level ("debug", "info", "warn", "error")
 //   - silent: if true, disables console output
+//
 // Returns a configured SugaredLogger instance.
 func SetupLogger(logFile string, logLevel string, silent bool) *zap.SugaredLogger {
 	// Convert string level to zapcore.Level

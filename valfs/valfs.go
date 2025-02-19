@@ -8,14 +8,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 
 	common "github.com/404wolf/valfs/common"
 	editor "github.com/404wolf/valfs/valfs/editor"
-	myvals "github.com/404wolf/valfs/valfs/myvals"
-	valfile "github.com/404wolf/valfs/valfs/myvals"
+	vals "github.com/404wolf/valfs/valfs/vals"
 )
 
 // Top level inode of a val file system
@@ -31,10 +29,10 @@ func NewValFS(client *common.Client) *ValFS {
 	return &ValFS{client: client}
 }
 
-func (c *ValFS) AddMyValsDir(ctx context.Context) {
-	common.Logger.Info("Adding myvals directory to valfs")
-	myValsDir := myvals.NewMyVals(&c.Inode, c.client, ctx)
-	c.AddChild("myvals", &myValsDir.Inode, true)
+func (c *ValFS) AddValsDir(ctx context.Context) {
+	common.Logger.Info("Adding vals directory to valfs")
+	valsDir := vals.NewValsDir(&c.Inode, c.client, ctx)
+	c.AddChild("vals", valsDir.GetInode(), true)
 }
 
 // Add the deno.json file which provides the user context about how to run and
@@ -57,7 +55,7 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 		OnAdd: func(ctx context.Context) {
 			// Add the folder with all the vals
 			if c.client.Config.EnableValsDirectory {
-				c.AddMyValsDir(ctx)
+				c.AddValsDir(ctx)
 			}
 
 			// Add the deno.json file
@@ -88,7 +86,7 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 		}()
 
 		defer func() {
-			common.Logger.Info("Unmounting", "mountPoint", c.client.Config.MountPoint)
+			common.Logger.Info("Unmounting valfs @ %s", c.client.Config.MountPoint)
 			err := server.Unmount()
 			if err != nil {
 				common.Logger.Error("Error unmounting", "error", err)
@@ -99,21 +97,4 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 
 	server.Wait()
 	return nil
-}
-
-// Create a new ValFile object and corresponding inode from a basic val instance
-func (c *ValFS) ValToValFile(
-	ctx context.Context,
-	val valgo.ExtendedVal,
-) *valfile.ValFile {
-	valFile, err := valfile.NewValFileFromExtendedVal(val, c.client)
-	if err != nil {
-		common.Logger.Fatal("Error creating val file", "error", err)
-	}
-	c.Inode.NewPersistentInode(
-		ctx,
-		valFile,
-		fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
-
-	return valFile
 }

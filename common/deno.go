@@ -3,10 +3,11 @@ package common
 import (
 	"bytes"
 	"context"
-	"golang.org/x/sync/semaphore"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/sync/semaphore"
 
 	"go.uber.org/zap"
 )

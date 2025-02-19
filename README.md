@@ -6,8 +6,8 @@
 
 First, get [a build of valfs](https://github.com/404Wolf/valfs/releases).
 
-Then, make a directory that you want to mount your vals to, for example, `mkdir
-valfsDir`.
+Then, make a directory that you want to mount your vals to, for example,
+`mkdir valfsDir`.
 
 Now, set a `VAL_TOWN_API_KEY` environmental variable or add it to a `.env` file.
 
@@ -19,7 +19,8 @@ Finally, run
 ./valfs mount ./valfsDir
 ```
 
-Now all your vals should show up as `.tsx` files under `./myvals`. You can:
+Now all your vals should show up as `.tsx` files under `./vals`. You can:
+
 - Edit them, and when you save new versions will automatically be created
 - Delete them (be careful!)
 
@@ -27,9 +28,10 @@ Now all your vals should show up as `.tsx` files under `./myvals`. You can:
 
 To install on mac, do everything the same as linux, but first, install MacFuse.
 
-Follow their steps [here](https://github.com/macfuse/macfuse/wiki/Getting-Started).
-It's not that bad! MacFuse is pretty cool, it lets you run fuse programs (like
-`valfs`, or even `rclone`) on macs.
+Follow their steps
+[here](https://github.com/macfuse/macfuse/wiki/Getting-Started). It's not that
+bad! MacFuse is pretty cool, it lets you run fuse programs (like `valfs`, or
+even `rclone`) on macs.
 
 On linux, everything should work. There's CI for Linux, but no CI for MacOS
 because you cannot load kernel modules (required for using fuse) without a GUI
@@ -53,10 +55,10 @@ the opposite should automatically update to reflect changes.
   <img src="./images/searching-all.png" width="48%" alt="Searching across vals (ripgrep)" />
 </p>
 
-In `myvals`, you'll see files that look like this, with metadata at the top
-about the val. All fields without a 🔒 can be manually updated, and all fields
-with a 🔒 will automatically be updated as you change the file. Depending on
-what text editor you use, you may have to reload the file after saving.
+In `vals`, you'll see files that look like this, with metadata at the top about
+the val. All fields without a 🔒 can be manually updated, and all fields with a
+🔒 will automatically be updated as you change the file. Depending on what text
+editor you use, you may have to reload the file after saving.
 
 ```ts
 #!/home/wolf/Documents/projects/Active/valfs/valfs
@@ -72,7 +74,7 @@ links:
 readme: ""
 ---*/
 
-console.log("Hello world!")
+console.log("Hello world!");
 ```
 
 You can view all the metadata about the val (and the URL it is deployed to!),
@@ -97,40 +99,42 @@ readme: |-
 console.log("Hello world!")
 ```
 
-Also notice the magic shebang in the val files! Coming soon... you'll be able
-to execute vals.
+Also notice the magic shebang in the val files! Coming soon... you'll be able to
+execute vals.
 
 ## Infrequently asked questions
 
 - I use neovim, but when I go to definition (gd), esm.sh doesn't return files
-   that end with `.tsx`, so I don't get LSP support or coloring :(
+  that end with `.tsx`, so I don't get LSP support or coloring :(
 
 Add this to your neovim configuration, to match on and ensure it recognizes it
 as typescript:
+
 ```lua
 vim.filetype.add({
   pattern = {
     ['deno:/https/esm%.town/.*'] = 'typescript',
   }
-}) 
+})
 ```
 
-- I use autosave, and valfs automatically writes after I've written. It's
-   really annoying since I need close and open the file every time it saves.
+- I use autosave, and valfs automatically writes after I've written. It's really
+  annoying since I need close and open the file every time it saves.
 
 Set the `--static-writess=true` flag to make sure that there's no write
-callbacks. You won't get versions in the module URL in the metadata of val
-files anymore, and the version won't automatically tick. Your writes will still
-go to val town, though. Note that autosaving might introduce some delay since
-writing requires API requests.
+callbacks. You won't get versions in the module URL in the metadata of val files
+anymore, and the version won't automatically tick. Your writes will still go to
+val town, though. Note that autosaving might introduce some delay since writing
+requires API requests.
 
 ### Blobs Directory
+
 (coming soon!)
 
 <img src="./images/blobs.png" width="30%" alt="A binary in blobstore">
 
-The blobs directory, `myblobs`, is pretty simple. You can view, edit, rename,
-or stat all your blob files. You can copy things in or out of this folder.
+The blobs directory, `myblobs`, is pretty simple. You can view, edit, rename, or
+stat all your blob files. You can copy things in or out of this folder.
 
 Internally, the files are fetched and referenced to temp files, so there is IO
 when accessing this directory, to allow nice support for larger files. In the
@@ -141,45 +145,50 @@ future, small files might automatically be ram based instead.
 - Val town doesn't have API support for creating/updating chron vals
 - When you "hop to definition" for a val town esm module (esm.town) val town
   serves deno modules with a name like "valname?v=22" without a ".tsx" at the
-  end, so some editors won't give syntax highlighting. You can manually tell your
-  editor it is `tsx`.
+  end, so some editors won't give syntax highlighting. You can manually tell
+  your editor it is `tsx`.
 
 # Works in Progress
 
 Disclaimer: this is still a work in progress! Soon, I will...
 
 - Add execute support (in progress) so you can do ./myvals/foo.tsx and it runs
-on val town's runtime and pipes logs to stdout (this will require a bit of
-"reverse engineering" the API since it's internal)
+  on val town's runtime and pipes logs to stdout (this will require a bit of
+  "reverse engineering" the API since it's internal)
 - Blob support is just buggy. It's coming soon!
 
 # TODOs
 
-Some of the TODOs hinge on Val Town improving their API and exposing more functionality
+Some of the TODOs hinge on Val Town improving their API and exposing more
+functionality
 
 ## Improvements
+
 - add a queue for operations (e.g. deleting) to prevent API limits
 - improve .env loading
 - add logging
 - metadata at top
 - trash (to view previous versions)
-- ValFiles should only have one val data reference, not two, or it should be 
+- ValFiles should only have one val data reference, not two, or it should be
   better documented how the lazy loading works.
 - There's shebangs at the top of files. But they don't do anything yet.
 
 ## ValFile Operations
+
 - rename
 - move (out of folder)
 
 ## Configuration
+
 Add options for:
+
 - whether files should be executable
 - whether to do lazy fetching
 
 ### Deno
+
 - When you execute a val with ./, use
   `deno run --lock=path/to/the-real-lock.lock script.X.tsx` and have val town
   generate the lock file (with HTTP val wrapper + `Deno.readTextFile()` on
   lockfile). It can add a lockfile to a temp file at `/tmp/valid.lock` and the
   "executable" run for it can use that lock.
-
