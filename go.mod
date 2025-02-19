@@ -4,8 +4,6 @@ go 1.22
 
 require (
 	github.com/404wolf/valgo v0.0.3
-	github.com/djherbis/buffer v1.2.0
-	github.com/djherbis/nio/v3 v3.0.1
 	github.com/goccy/go-yaml v1.15.13
 	github.com/hanwen/go-fuse/v2 v2.7.2
 	github.com/spf13/cobra v1.8.1
@@ -13,6 +11,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/zijiren233/yaml-comment v0.2.2
 	go.uber.org/zap v1.27.0
+	golang.org/x/sync v0.6.0
 )
 
 require (
