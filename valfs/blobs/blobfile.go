@@ -28,7 +28,7 @@ type BlobFile struct {
 
 	Meta    valgo.BlobListingItem
 	Upload  *BlobUpload
-	myBlobs *MyBlobs
+	blobs *BlobsDir
 }
 
 var _ = (fs.NodeOpener)((*BlobFile)(nil))
@@ -46,20 +46,20 @@ type BlobFileHandle struct {
 // NewBlobFileAuto creates a new BlobFile with a random UUID
 func NewBlobFileAuto(
 	data valgo.BlobListingItem,
-	myBlobs *MyBlobs,
+	blobsDir *BlobsDir,
 ) *BlobFile {
-	return NewBlobFile(data, myBlobs)
+	return NewBlobFile(data, blobsDir)
 }
 
 // NewBlobFile creates a new BlobFile with the given data, client, and UUID
 func NewBlobFile(
 	data valgo.BlobListingItem,
-	myBlobs *MyBlobs,
+	blobsDir *BlobsDir,
 ) *BlobFile {
 	common.Logger.Info("Creating new BlobFile with key %s", data.Key)
 	blobFile := &BlobFile{
 		Meta:    data,
-		myBlobs: myBlobs,
+		blobs: blobsDir,
 	}
 	blobFile.Upload = &BlobUpload{BlobFile: blobFile}
 	return blobFile
@@ -124,7 +124,7 @@ func (f *BlobFile) Open(
 		fileInfo, _ := file.Stat()
 		if fileInfo.Size() == 0 {
 			common.Logger.Info("Fetching content for blob %s", f.Meta.Key)
-			resp, err := f.myBlobs.client.APIClient.RawRequest(
+			resp, err := f.blobs.client.APIClient.RawRequest(
 				ctx,
 				http.MethodGet,
 				"/v1/blob/"+f.Meta.Key,

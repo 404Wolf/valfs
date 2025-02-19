@@ -3,21 +3,18 @@ package valfs
 import (
 	"context"
 	"os"
-	"os/exec"
 	"os/signal"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 
 	common "github.com/404wolf/valfs/common"
-	deno "github.com/404wolf/valfs/valfs/deno"
-	myblobs "github.com/404wolf/valfs/valfs/myblobs"
-	myvals "github.com/404wolf/valfs/valfs/myvals"
-	valfile "github.com/404wolf/valfs/valfs/myvals"
+	editor "github.com/404wolf/valfs/valfs/editor"
+	blobs "github.com/404wolf/valfs/valfs/blobs"
+	vals "github.com/404wolf/valfs/valfs/vals"
 )
 
 // Top level inode of a val file system
@@ -33,23 +30,23 @@ func NewValFS(client *common.Client) *ValFS {
 	return &ValFS{client: client}
 }
 
-func (c *ValFS) AddMyValsDir(ctx context.Context) {
-	common.Logger.Info("Adding myvals directory to valfs")
-	myValsDir := myvals.NewMyVals(&c.Inode, c.client, ctx)
-	c.AddChild("myvals", &myValsDir.Inode, true)
+func (c *ValFS) AddValsDir(ctx context.Context) {
+	common.Logger.Info("Adding vals directory to valfs")
+	valsDir := vals.NewValsDir(&c.Inode, c.client, ctx)
+	c.AddChild("vals", valsDir.GetInode(), true)
 }
 
-func (c *ValFS) AddMyBlobsDir(ctx context.Context) {
-	common.Logger.Info("Adding myblobs directory to valfs")
-	myBlobsDir := myblobs.NewMyBlobs(&c.Inode, c.client, ctx)
-	c.AddChild("myblobs", &myBlobsDir.Inode, true)
+func (c *ValFS) AddBlobsDir(ctx context.Context) {
+	common.Logger.Info("Adding blobs directory to valfs")
+	blobsDir := blobs.NewBlobsDir(&c.Inode, c.client, ctx)
+	c.AddChild("blobs", &blobsDir.Inode, true)
 }
 
 // Add the deno.json file which provides the user context about how to run and
 // edit their vals
 func (c *ValFS) AddDenoJSON(ctx context.Context) {
 	common.Logger.Info("Adding deno.json to valfs")
-	denoJsonInode := deno.NewDenoJson(&c.Inode, c.client, ctx)
+	denoJsonInode := editor.NewDenoJson(&c.Inode, c.client, ctx)
 	c.AddChild("deno.json", denoJsonInode, false)
 }
 
@@ -65,12 +62,12 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 		OnAdd: func(ctx context.Context) {
 			// Add the folder with all the vals
 			if c.client.Config.EnableValsDirectory {
-				c.AddMyValsDir(ctx)
+				c.AddValsDir(ctx)
 			}
 
 			// Add the folder with all the blobs
 			if c.client.Config.EnableBlobsDirectory {
-				c.AddMyBlobsDir(ctx)
+				c.AddBlobsDir(ctx)
 			}
 
 			// Add the deno.json file
@@ -101,7 +98,7 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 		}()
 
 		defer func() {
-			common.Logger.Info("Unmounting", "mountPoint", c.client.Config.MountPoint)
+			common.Logger.Info("Unmounting valfs @ %s", c.client.Config.MountPoint)
 			err := server.Unmount()
 			if err != nil {
 				common.Logger.Error("Error unmounting", "error", err)
@@ -112,47 +109,4 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 
 	server.Wait()
 	return nil
-}
-
-func (c *ValFS) RunDenoCache(glob string) {
-	c.denoCacheMutex.Lock()
-
-	// Check if enough time has passed since last run
-	if time.Since(c.denoCacheLastRun) < time.Second {
-		return
-	}
-
-	// If the vals dir is enabled, execute a deno cache on it
-	if c.client.Config.EnableValsDirectory {
-		go func() {
-			defer c.denoCacheMutex.Unlock()
-
-			common.Logger.Info("Caching Deno libraries")
-			cacheCmd := c.client.Config.MountPoint + "/myvals" + glob
-			common.Logger.Info("Executing deno cache", "command", "deno cache --allow-import "+cacheCmd)
-			cmd := exec.Command("deno", "cache", "--allow-import", cacheCmd)
-			cmd.Start()
-			cmd.Process.Release()
-		}()
-	}
-
-	// Update the last cache time to allow for a cooldown
-	c.denoCacheLastRun = time.Now()
-}
-
-// Create a new ValFile object and corresponding inode from a basic val instance
-func (c *ValFS) ValToValFile(
-	ctx context.Context,
-	val valgo.ExtendedVal,
-) *valfile.ValFile {
-	valFile, err := valfile.NewValFileFromExtendedVal(val, c.client)
-	if err != nil {
-		common.Logger.Fatal("Error creating val file", "error", err)
-	}
-	c.Inode.NewPersistentInode(
-		ctx,
-		valFile,
-		fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
-
-	return valFile
 }

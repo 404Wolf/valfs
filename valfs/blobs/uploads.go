@@ -115,7 +115,7 @@ func (w *BlobUpload) startUpload() {
 	log.Printf("Beginning upload request for blob %s to server", w.BlobFile.Meta.Key)
 	startTime := time.Now()
 
-	_, err := w.BlobFile.myBlobs.client.APIClient.RawRequest(
+	_, err := w.BlobFile.blobs.client.APIClient.RawRequest(
 		w.uploadCtx,
 		http.MethodPost,
 		"/v1/blob/"+w.BlobFile.Meta.Key,

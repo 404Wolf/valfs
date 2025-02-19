@@ -29,38 +29,38 @@ func validateName(filename string) bool {
 }
 
 // The folder with all of my blobs in it
-type MyBlobs struct {
+type BlobsDir struct {
 	fs.Inode
 	client *common.Client
 }
 
-var _ = (fs.NodeCreater)((*MyBlobs)(nil))
-var _ = (fs.NodeUnlinker)((*MyBlobs)(nil))
-var _ = (fs.NodeRenamer)((*MyBlobs)(nil))
+var _ = (fs.NodeCreater)((*BlobsDir)(nil))
+var _ = (fs.NodeUnlinker)((*BlobsDir)(nil))
+var _ = (fs.NodeRenamer)((*BlobsDir)(nil))
 
 // Set up background refresh of blobs and retrieve an auto updating folder of
 // blob files
-func NewMyBlobs(parent *fs.Inode, client *common.Client, ctx context.Context) *MyBlobs {
-	myBlobs := &MyBlobs{client: client}
+func NewBlobsDir(parent *fs.Inode, client *common.Client, ctx context.Context) *BlobsDir {
+	blobsDir := &BlobsDir{client: client}
 	attrs := fs.StableAttr{Mode: syscall.S_IFDIR | 0555}
-	parent.NewInode(ctx, myBlobs, attrs)
+	parent.NewInode(ctx, blobsDir, attrs)
 
 	if client.Config.AutoRefresh {
-		refreshBlobs(ctx, &myBlobs.Inode, myBlobs)
+		refreshBlobs(ctx, &blobsDir.Inode, blobsDir)
 		ticker := time.NewTicker(time.Duration(client.Config.AutoRefreshInterval) * time.Second)
 		go func() {
 			for range ticker.C {
-				refreshBlobs(ctx, &myBlobs.Inode, myBlobs)
+				refreshBlobs(ctx, &blobsDir.Inode, blobsDir)
 				common.Logger.Info("Refreshed blobs")
 			}
 		}()
 	}
 
-	return myBlobs
+	return blobsDir
 }
 
 // Handle deletion of a file by also deleting the blob
-func (c *MyBlobs) Unlink(ctx context.Context, name string) syscall.Errno {
+func (c *BlobsDir) Unlink(ctx context.Context, name string) syscall.Errno {
 	common.Logger.Info("Deleting blob " + name)
 
 	// Attempt to delete the blob
@@ -76,7 +76,7 @@ func (c *MyBlobs) Unlink(ctx context.Context, name string) syscall.Errno {
 }
 
 // Create a new blob on new file creation
-func (c *MyBlobs) Create(
+func (c *BlobsDir) Create(
 	ctx context.Context,
 	name string,
 	flags uint32,
@@ -135,7 +135,7 @@ func (c *MyBlobs) Create(
 // blob api, and then pipes the output over to a differnet TCP socket where we
 // directly upload it to the api, but under a different key. If this succeeds
 // we then delete the old version.
-func (c *MyBlobs) Rename(
+func (c *BlobsDir) Rename(
 	ctx context.Context,
 	oldName string,
 	newParent fs.InodeEmbedder,
@@ -144,7 +144,7 @@ func (c *MyBlobs) Rename(
 ) syscall.Errno {
 	// Prevent from moving it out of the directory
 	if newParent.EmbeddedInode().StableAttr().Ino != c.Inode.StableAttr().Ino {
-		common.Logger.Info("Cannot move blob out of the `myblobs` directory")
+		common.Logger.Info("Cannot move blob out of the `blobs` directory")
 		return syscall.EINVAL
 	}
 
@@ -163,7 +163,7 @@ func (c *MyBlobs) Rename(
 	return syscall.F_OK
 }
 
-func (c *MyBlobs) renameTransaction(ctx context.Context, oldKey string, newKey string) error {
+func (c *BlobsDir) renameTransaction(ctx context.Context, oldKey string, newKey string) error {
 	// Fetch the old blob
 	getResp, err := c.client.APIClient.RawRequest(
 		ctx,
@@ -227,7 +227,7 @@ func (c *MyBlobs) renameTransaction(ctx context.Context, oldKey string, newKey s
 	return nil
 }
 
-func (c *MyBlobs) rollbackRename(ctx context.Context, newKey string) {
+func (c *BlobsDir) rollbackRename(ctx context.Context, newKey string) {
 	deleteResp, err := c.client.APIClient.RawRequest(
 		ctx,
 		http.MethodDelete,

@@ -16,10 +16,10 @@ import (
 func refreshBlobs(
 	ctx context.Context,
 	root *fs.Inode,
-	myBlobs *MyBlobs,
+	blobsDir *BlobsDir,
 ) error {
 	// Fetch the latest list of blobs from the server
-	newBlobs, err := getMyBlobs(ctx, myBlobs.client)
+	newBlobs, err := getBlobs(ctx, blobsDir.client)
 	if err != nil {
 		common.Logger.Error("Error fetching blobs", err)
 		return nil
@@ -34,7 +34,7 @@ func refreshBlobs(
 	for _, newBlob := range newBlobs {
 		stillExistingBlobs[newBlob.Key] = true
 
-		inode := myBlobs.GetChild(newBlob.GetKey())
+		inode := blobsDir.GetChild(newBlob.GetKey())
 		if inode != nil {
 			blobFile := inode.Operations().(*BlobFile)
 			// The blob already exists, check if it needs updating
@@ -45,7 +45,7 @@ func refreshBlobs(
 			}
 		} else {
 			// This is a new blob, add it to the filesystem
-			blobFile := NewBlobFileAuto(newBlob, myBlobs)
+			blobFile := NewBlobFileAuto(newBlob, blobsDir)
 			newInode := root.NewPersistentInode(ctx, blobFile, fs.StableAttr{Mode: syscall.S_IFREG})
 			root.AddChild(newBlob.Key, newInode, true) // TODO this is nullable
 			log.Printf("Added blob %s, found fresh on valtown", newBlob.Key)
@@ -53,7 +53,7 @@ func refreshBlobs(
 	}
 
 	// Check for blobs that no longer exist and remove them
-	inodes := myBlobs.Children()
+	inodes := blobsDir.Children()
 	for name := range inodes {
 		if !stillExistingBlobs[name] {
 			// This blob no longer exists, remove it from the filesystem and map
@@ -65,9 +65,9 @@ func refreshBlobs(
 	return nil
 }
 
-// getMyBlobs fetches the list of all blobs belonging to the authenticated user
+// getBlobs fetches the list of all blobs belonging to the authenticated user
 // It uses the provided client to make an API call to retrieve the blob listings
-func getMyBlobs(ctx context.Context, client *common.Client) ([]valgo.BlobListingItem, error) {
+func getBlobs(ctx context.Context, client *common.Client) ([]valgo.BlobListingItem, error) {
 	log.Println("Fetching all of my blobs")
 
 	// Make an API call to fetch the list of blobs

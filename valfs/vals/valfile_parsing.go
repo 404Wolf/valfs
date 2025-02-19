@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 
 	common "github.com/404wolf/valfs/common"
 	"github.com/404wolf/valgo"
@@ -83,6 +84,12 @@ func NewValPackage(client *common.Client, val *valgo.ExtendedVal) ValPackage {
 func (v *ValPackage) GetFrontmatterText() (string, error) {
 	link := v.Val.GetLinks()
 
+	if v.client.Config.StaticMeta {
+		if strings.Contains(link.Module, "?") {
+			link.Module = strings.Split(link.Module, "?")[0]
+		}
+	}
+
 	frontmatterValLinks := ValFrontmatterLinks{
 		Website:  v.Val.Url,
 		Module:   link.Module,
@@ -123,9 +130,12 @@ func (v *ValPackage) ToText() (*string, error) {
 	}
 
 	combined := frontmatter + v.Val.GetCode()
-	finalized := AffixShebang(combined) // add a shebang so val can be executed
 
-	return &finalized, nil
+	if v.client.Config.ExecutableVals {
+		combined = AffixShebang(combined)
+	}
+
+	return &combined, nil
 }
 
 func (v *ValPackage) Len() (int, error) {

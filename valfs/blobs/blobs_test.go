@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const dirName = "myblobs"
+const dirName = "blobs"
 
 func setupTest(t *testing.T) (*valfs.TestData, string) {
 	return valfs.SetupTest(t, dirName)

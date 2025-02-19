@@ -1,59 +1,67 @@
 package common
 
 import (
-	"fmt"
+	"bytes"
+	"context"
+	"os/exec"
 	"path/filepath"
-	"sync"
-	"time"
+	"strings"
+
+	"golang.org/x/sync/semaphore"
+
+	"go.uber.org/zap"
 )
 
-// DenoCacher handles caching of files matching glob patterns
-type DenoCacher struct {
-	cache     map[string][]byte
-	timestamp map[string]time.Time
-	mutex     sync.RWMutex
-}
+// Semaphore to limit concurrent deno operations to 3
+var cacheSemaphore = semaphore.NewWeighted(3)
 
-// NewDenoCacher creates a new instance of DenoCacher
-func NewDenoCacher() *DenoCacher {
-	return &DenoCacher{
-		cache:     make(map[string][]byte),
-		timestamp: make(map[string]time.Time),
+// DenoCache triggers a cache operation for the specified mount point.
+// It ensures only three cache operations run at a time and enforces
+// a minimum 1-second delay between operations.
+func DenoCache(name string, client *Client) {
+	// Acquire semaphore (blocks if 3 operations are already running)
+	if err := cacheSemaphore.Acquire(context.Background(), 1); err != nil {
+		Logger.Error("failed to acquire semaphore",
+			zap.String("name", name),
+			zap.Error(err))
+		return
 	}
-}
+	defer cacheSemaphore.Release(1)
 
-// DenoCache processes files matching the provided glob pattern
-func (dc *DenoCacher) DenoCache(glob string) error {
-	matches, err := filepath.Glob(glob)
-	if err != nil {
-		return fmt.Errorf("glob pattern error: %w", err)
+	fullMountPoint := filepath.Join(client.Config.MountPoint, "myvals", name)
+
+	// Prepare command
+	cmd := exec.Command(
+		"deno",
+		"install",
+		"--allow-import",
+		"--entrypoint",
+		fullMountPoint,
+	)
+
+	// Create buffers for stdout and stderr
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	// Log the full command
+	Logger.Debug("starting cache operation",
+		zap.String("mountPoint", fullMountPoint),
+		zap.String("command", "deno "+strings.Join(cmd.Args[1:], " ")))
+
+	// Execute the command and wait for it to complete
+	if err := cmd.Run(); err != nil {
+		Logger.Error("failed to execute cache command",
+			zap.String("mountPoint", fullMountPoint),
+			zap.String("stdout", stdout.String()),
+			zap.String("stderr", stderr.String()),
+			zap.Error(err))
+		return
 	}
 
-	dc.mutex.Lock()
-	defer dc.mutex.Unlock()
-
-	for _, match := range matches {
-		dc.cache[match] = []byte{}
-		dc.timestamp[match] = time.Now()
-	}
-
-	return nil
-}
-
-// Get retrieves a cached item if it exists
-func (dc *DenoCacher) Get(key string) ([]byte, bool) {
-	dc.mutex.RLock()
-	defer dc.mutex.RUnlock()
-
-	data, exists := dc.cache[key]
-	return data, exists
-}
-
-// Clear removes all items from the cache
-func (dc *DenoCacher) Clear() {
-	dc.mutex.Lock()
-	defer dc.mutex.Unlock()
-
-	dc.cache = make(map[string][]byte)
-	dc.timestamp = make(map[string]time.Time)
+	// Log success with output
+	Logger.Debug("cache operation completed",
+		zap.String("mountPoint", fullMountPoint),
+		zap.String("stdout", stdout.String()),
+		zap.String("stderr", stderr.String()))
 }

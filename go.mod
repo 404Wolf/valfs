@@ -13,6 +13,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/zijiren233/yaml-comment v0.2.2
 	go.uber.org/zap v1.27.0
+	golang.org/x/sync v0.6.0
 )
 
 require (
