@@ -130,7 +130,7 @@ func SetupTests(t *testing.T) TestData {
 
 	// Prepare cleanup function
 	cleanup := func() {
-		os.RemoveAll(testDir + "/myvals")
+		os.RemoveAll(testDir + "/vals")
 		unmount()
 	}
 

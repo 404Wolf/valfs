@@ -10,13 +10,13 @@ import (
 
 	common "github.com/404wolf/valfs/common"
 	valfs "github.com/404wolf/valfs/valfs"
-	myvals "github.com/404wolf/valfs/valfs/myvals"
+	vals "github.com/404wolf/valfs/valfs/vals"
 	"github.com/404wolf/valgo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-const dirName = "myvals"
+const dirName = "vals"
 
 func setupTest(t *testing.T) (*valfs.TestData, string) {
 	return valfs.SetupTest(t, dirName)
@@ -27,7 +27,7 @@ func randomFilename(prefix string) string {
 }
 
 func getValFromFileContents(t *testing.T, apiClient *common.APIClient, contents string) *valgo.ExtendedVal {
-	_, finalMeta, err := myvals.DeconstructVal(string(contents))
+	_, finalMeta, err := vals.DeconstructVal(string(contents))
 	require.NoError(t, err, "Failed to parse final metadata")
 	valId := finalMeta.Id
 	val, _, err := apiClient.ValsAPI.ValsGet(context.Background(), valId).Execute()
