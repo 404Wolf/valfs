@@ -105,28 +105,30 @@ execute vals.
 ## Infrequently asked questions
 
 - I use neovim, but when I go to definition (gd), esm.sh doesn't return files
-   that end with `.tsx`, so I don't get LSP support or coloring :(
+  that end with `.tsx`, so I don't get LSP support or coloring :(
 
 Add this to your neovim configuration, to match on and ensure it recognizes it
 as typescript:
+
 ```lua
 vim.filetype.add({
   pattern = {
     ['deno:/https/esm%.town/.*'] = 'typescript',
   }
-}) 
+})
 ```
 
-- I use autosave, and valfs automatically writes after I've written. It's
-   really annoying since I need close and open the file every time it saves.
+- I use autosave, and valfs automatically writes after I've written. It's really
+  annoying since I need close and open the file every time it saves.
 
 Set the `--static-writess=true` flag to make sure that there's no write
-callbacks. You won't get versions in the module URL in the metadata of val
-files anymore, and the version won't automatically tick. Your writes will still
-go to val town, though. Note that autosaving might introduce some delay since
-writing requires API requests.
+callbacks. You won't get versions in the module URL in the metadata of val files
+anymore, and the version won't automatically tick. Your writes will still go to
+val town, though. Note that autosaving might introduce some delay since writing
+requires API requests.
 
 ### Blobs Directory
+
 (coming soon!)
 
 <img src="./images/blobs.png" width="30%" alt="A binary in blobstore">
@@ -151,8 +153,8 @@ future, small files might automatically be ram based instead.
 Disclaimer: this is still a work in progress! Soon, I will...
 
 - Add execute support (in progress) so you can do ./myvals/foo.tsx and it runs
-on val town's runtime and pipes logs to stdout (this will require a bit of
-"reverse engineering" the API since it's internal)
+  on val town's runtime and pipes logs to stdout (this will require a bit of
+  "reverse engineering" the API since it's internal)
 - Blob support is just buggy. It's coming soon!
 
 # TODOs
@@ -190,4 +192,3 @@ Add options for:
   generate the lock file (with HTTP val wrapper + `Deno.readTextFile()` on
   lockfile). It can add a lockfile to a temp file at `/tmp/valid.lock` and the
   "executable" run for it can use that lock.
-

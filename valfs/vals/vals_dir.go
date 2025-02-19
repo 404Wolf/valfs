@@ -21,6 +21,7 @@ type ValsDir struct {
 	client   *common.Client
 	config   common.RefresherConfig
 	stopChan chan struct{}
+	valOps   ValOperations
 }
 
 var _ = (fs.NodeRenamer)((*ValsDir)(nil))
@@ -40,6 +41,7 @@ func NewValsDir(
 	common.Logger.Info("Initializing new ValsDir")
 	valsDir := &ValsDir{
 		client:   client,
+		valOps:   NewValDirOperations(client),
 		config:   common.RefresherConfig{LookupCap: 99},
 		stopChan: nil,
 	}
@@ -69,6 +71,12 @@ func (c *ValsDir) GetClient() *common.Client {
 	return c.client
 }
 
+// GetValOps returns the val operations (CRUD API abstractions) associated with
+// the ValsDir
+func (c *ValsDir) GetValOps() ValOperations {
+	return c.valOps
+}
+
 // GetClient returns whether the vals dir supports subdirectories
 func (c *ValsDir) SupportsDirs() bool {
 	return false
@@ -88,7 +96,6 @@ func (c *ValsDir) Unlink(ctx context.Context, name string) syscall.Errno {
 		return syscall.ENOENT
 	}
 
-	// Cast the file handle to a ValFile
 	valFile, ok := child.Operations().(*ValFile)
 	if !ok {
 		common.Logger.Errorf("Unlink failed: %s is not a ValFile", name)
@@ -96,7 +103,7 @@ func (c *ValsDir) Unlink(ctx context.Context, name string) syscall.Errno {
 	}
 
 	common.Logger.Infof("Attempting to delete val %s (ID: %s)", name, valFile.BasicData.Id)
-	_, err := c.client.APIClient.ValsAPI.ValsDelete(ctx, valFile.BasicData.Id).Execute()
+	err := c.GetValOps().Delete(ctx, valFile.BasicData.Id)
 	if err != nil {
 		common.Logger.Errorf("Error deleting val %s: %v", name, err)
 		return syscall.EIO
@@ -121,43 +128,31 @@ func (c *ValsDir) Create(
 		common.Logger.Errorf("Create failed: unknown val type for file %s", name)
 		return nil, nil, 0, syscall.EINVAL
 	}
+
+	templateCode := GetTemplate(valType)
 	common.Logger.Infof("Creating val %s of type %s with privacy %s", valName, valType, DefaultPrivacy)
 
-	// Make a request to create the val
-	templateCode := GetTemplate(valType)
-	createReq := valgo.NewValsCreateRequest(string(templateCode))
-	createReq.SetName(valName)
-	createReq.SetType(string(valType))
-	createReq.SetPrivacy(DefaultPrivacy)
-
-	common.Logger.Info("Sending create request to API")
-	val, _, err := c.client.APIClient.ValsAPI.ValsCreate(ctx).ValsCreateRequest(*createReq).Execute()
-
-	// Check if the request was successful
+	val, err := c.GetValOps().Create(ctx, valName, string(valType), string(templateCode), DefaultPrivacy)
 	if err != nil {
 		common.Logger.Errorf("API error creating val %s: %v", name, err)
 		return nil, nil, 0, syscall.EIO
-	} else {
-		common.Logger.Infof("Successfully created val %v", val)
 	}
 
-	// Create a val file that we can hand over
 	common.Logger.Info("Creating val file from extended val")
-	valFile, err := NewValFileFromExtendedVal(*val, c.client)
+	valFile, err := NewValFileFromExtendedVal(*val, c.client, c)
 	if err != nil {
 		common.Logger.Errorf("Error creating val file for %s: %v", name, err)
 		return nil, nil, 0, syscall.EIO
 	}
+
 	newInode := c.NewPersistentInode(
 		ctx,
 		valFile,
 		fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
 
-	// Open the file handle
 	fileHandle, _, _ := valFile.Open(ctx, flags)
 	valFile.ModifiedNow()
 
-	// Schedule a deno cache for after the file gets created to cache new modules
 	waitThenMaybeDenoCache(name, c.client)
 
 	return newInode, &fileHandle, fuse.FOPEN_DIRECT_IO, syscall.F_OK
@@ -173,20 +168,17 @@ func (c *ValsDir) Rename(
 ) syscall.Errno {
 	common.Logger.Infof("Rename request from %s to %s", oldName, newName)
 
-	// Check if we're moving between directories
 	if newParent.EmbeddedInode().StableAttr().Ino != c.Inode.StableAttr().Ino {
 		common.Logger.Warn("Cannot move val out of the `vals` directory")
 		return syscall.EINVAL
 	}
 
-	// Validate the new filename
 	valName, valType := ExtractFromFilename(newName)
 	if valType == Unknown {
 		common.Logger.Errorf("Invalid val type in new name: %s", newName)
 		return syscall.EINVAL
 	}
 
-	// Check if the new filename already exists
 	if c.GetChild(newName) != nil {
 		common.Logger.Warnf("Destination file already exists: %s", newName)
 		return syscall.EEXIST
@@ -199,29 +191,13 @@ func (c *ValsDir) Rename(
 	}
 	valFile := inode.Operations().(*ValFile)
 
-	// Prepare the update request
 	common.Logger.Infof("Updating val %s to new name %s and type %s", oldName, valName, valType)
-	valUpdateReq := valgo.NewValsUpdateRequest()
-	valUpdateReq.SetName(valName)
-	valUpdateReq.SetType(string(valType))
-
-	// Update the val in the backend
-	_, err := c.client.APIClient.ValsAPI.ValsUpdate(ctx,
-		valFile.BasicData.Id).ValsUpdateRequest(*valUpdateReq).Execute()
+	extVal, err := c.GetValOps().Update(ctx, valFile.BasicData.Id, valName, string(valType))
 	if err != nil {
 		common.Logger.Errorf("Error updating val %s: %v", oldName, err)
 		return syscall.EIO
 	}
 
-	// Fetch what the change produced
-	common.Logger.Infof("Fetching updated val details for %s", valName)
-	extVal, _, err := c.client.APIClient.ValsAPI.ValsGet(ctx, valFile.BasicData.Id).Execute()
-	if err != nil {
-		common.Logger.Errorf("Error fetching updated val: %v", err)
-		return syscall.EIO
-	}
-
-	// Update the val file with the new data
 	valFile.ExtendedData = extVal
 	valFile.BasicData.Name = valName
 	valFile.BasicData.Type = string(valType)
@@ -250,7 +226,7 @@ func (c *ValsDir) Refresh(ctx context.Context) error {
 
 		if !exists {
 			common.Logger.Infof("Creating new val file for %s", newVal.GetId())
-			valFile, err := NewValFileFromBasicVal(ctx, newVal, c.client)
+			valFile, err := NewValFileFromBasicVal(ctx, newVal, c.client, c)
 			if err != nil {
 				common.Logger.Errorf("Error creating val file for %s: %v", newVal.GetId(), err)
 				return err
@@ -262,7 +238,6 @@ func (c *ValsDir) Refresh(ctx context.Context) error {
 			common.Logger.Infof("Added val %s, found fresh on valtown", newVal.GetId())
 		}
 
-		// If the val already existed in our collection but is newer then update it in-place
 		if exists && newVal.GetVersion() > prevValFile.BasicData.GetVersion() {
 			common.Logger.Infof("Updating existing val %s to version %d", newVal.GetId(), newVal.GetVersion())
 			prevValFile.BasicData = newVal
@@ -272,7 +247,6 @@ func (c *ValsDir) Refresh(ctx context.Context) error {
 		}
 	}
 
-	// For each old val, if it is not in new vals remove it
 	for _, oldVal := range previousValIds {
 		if _, exists := newValsIdsToBasicVals[oldVal.BasicData.GetId()]; !exists {
 			filename := ConstructFilename(oldVal.BasicData.GetName(), ValType(oldVal.BasicData.GetType()))
@@ -290,42 +264,27 @@ func (c *ValsDir) Refresh(ctx context.Context) error {
 func (c *ValsDir) getVals(ctx context.Context) ([]valgo.BasicVal, error) {
 	common.Logger.Info("Fetching all of my vals")
 
-	// Fetch my ID
-	meResp, _, err := c.client.APIClient.MeAPI.MeGet(context.Background()).Execute()
-	if err != nil {
-		common.Logger.Errorf("Error fetching user ID: %v", err)
-		return nil, err
-	}
-
-	// Use my ID to fetch my vals
-	offset := 0
+	offset := int32(0)
 	allVals := []valgo.BasicVal{}
+
 	for {
-		// Request the next batch of vals
 		common.Logger.Infof("Fetching vals batch with offset %d", offset)
-		request := c.client.APIClient.UsersAPI.UsersVals(ctx, meResp.GetId())
-		request = request.Offset(int32(offset))
-		request = request.Limit(c.config.LookupCap)
-		vals, _, err := request.Execute()
+		vals, err := c.GetValOps().List(ctx, offset, c.config.LookupCap)
 		if err != nil {
 			common.Logger.Errorf("Error fetching vals batch: %v", err)
 			return nil, err
 		}
 
-		// Update the list of vals
-		for _, val := range vals.Data {
-			allVals = append(allVals, val)
-		}
+		allVals = append(allVals, vals...)
 
-		// Check to see if we have reached the end
-		if len(vals.Data) < int(c.config.LookupCap) {
+		if len(vals) < int(c.config.LookupCap) {
 			break
 		}
 
-		offset += int(c.config.LookupCap)
+		offset += c.config.LookupCap
 	}
-	common.Logger.Infof("Fetched all of my vals. Found %d vals", len(allVals))
 
+	common.Logger.Infof("Fetched all of my vals. Found %d vals", len(allVals))
 	return allVals, nil
 }
 

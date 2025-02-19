@@ -9,14 +9,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 
 	common "github.com/404wolf/valfs/common"
-	valfile "github.com/404wolf/valfs/valfs/vals"
-	vals "github.com/404wolf/valfs/valfs/vals"
 	editor "github.com/404wolf/valfs/valfs/editor"
+	vals "github.com/404wolf/valfs/valfs/vals"
 )
 
 // Top level inode of a val file system
@@ -126,21 +124,4 @@ func (c *ValFS) RunDenoCache(glob string) {
 
 	// Update the last cache time to allow for a cooldown
 	c.denoCacheLastRun = time.Now()
-}
-
-// Create a new ValFile object and corresponding inode from a basic val instance
-func (c *ValFS) ValToValFile(
-	ctx context.Context,
-	val valgo.ExtendedVal,
-) *valfile.ValFile {
-	valFile, err := valfile.NewValFileFromExtendedVal(val, c.client)
-	if err != nil {
-		common.Logger.Fatal("Error creating val file", "error", err)
-	}
-	c.Inode.NewPersistentInode(
-		ctx,
-		valFile,
-		fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
-
-	return valFile
 }

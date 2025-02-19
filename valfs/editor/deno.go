@@ -21,7 +21,7 @@ var denoJSON []byte
 
 func NewDenoJson(parent *fs.Inode, client *common.Client, ctx context.Context) *fs.Inode {
 	denoJsonFile := &fs.MemRegularFile{Data: denoJSON, Attr: fuse.Attr{Mode: 0644}}
-  common.Logger.Info("Adding deno.json to valfs")
+	common.Logger.Info("Adding deno.json to valfs")
 
 	return parent.NewPersistentInode(
 		ctx,

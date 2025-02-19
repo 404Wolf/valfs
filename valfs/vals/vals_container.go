@@ -48,4 +48,5 @@ type ValsContainer interface {
 	Refresh(ctx context.Context) error
 	StartAutoRefresh(ctx context.Context, interval time.Duration)
 	StopAutoRefresh()
+	GetValOps() ValOperations
 }

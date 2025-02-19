@@ -9,12 +9,12 @@ import (
 )
 
 type Client struct {
-	APIClient  *APIClient
-	APIKey     string
-	Config     ValfsConfig
-	Id         uint64
-	Started    time.Time
-	User       valgo.User
+	APIClient *APIClient
+	APIKey    string
+	Config    ValfsConfig
+	Id        uint64
+	Started   time.Time
+	User      valgo.User
 }
 
 func NewClient(
@@ -45,12 +45,12 @@ func NewClient(
 	)
 
 	client := &Client{
-		APIClient:  apiClient,
-		APIKey:     apiKey,
-		Config:     config,
-		Id:         rand.Uint64(),
-		Started:    time.Now(),
-		User:       *user,
+		APIClient: apiClient,
+		APIKey:    apiKey,
+		Config:    config,
+		Id:        rand.Uint64(),
+		Started:   time.Now(),
+		User:      *user,
 	}
 
 	return client, nil
