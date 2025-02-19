@@ -15,7 +15,6 @@ import (
 
 	common "github.com/404wolf/valfs/common"
 	deno "github.com/404wolf/valfs/valfs/deno"
-	myblobs "github.com/404wolf/valfs/valfs/myblobs"
 	myvals "github.com/404wolf/valfs/valfs/myvals"
 	valfile "github.com/404wolf/valfs/valfs/myvals"
 )
@@ -39,12 +38,6 @@ func (c *ValFS) AddMyValsDir(ctx context.Context) {
 	c.AddChild("myvals", &myValsDir.Inode, true)
 }
 
-func (c *ValFS) AddMyBlobsDir(ctx context.Context) {
-	common.Logger.Info("Adding myblobs directory to valfs")
-	myBlobsDir := myblobs.NewMyBlobs(&c.Inode, c.client, ctx)
-	c.AddChild("myblobs", &myBlobsDir.Inode, true)
-}
-
 // Add the deno.json file which provides the user context about how to run and
 // edit their vals
 func (c *ValFS) AddDenoJSON(ctx context.Context) {
@@ -66,11 +59,6 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 			// Add the folder with all the vals
 			if c.client.Config.EnableValsDirectory {
 				c.AddMyValsDir(ctx)
-			}
-
-			// Add the folder with all the blobs
-			if c.client.Config.EnableBlobsDirectory {
-				c.AddMyBlobsDir(ctx)
 			}
 
 			// Add the deno.json file
