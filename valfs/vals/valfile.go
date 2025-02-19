@@ -135,6 +135,10 @@ func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 		client:  f.client,
 	}
 
+	// Have deno automatically recache modules in the file
+	filename := ConstructFilename(f.BasicData.GetName(), ValType(f.BasicData.GetType()))
+	waitThenMaybeDenoCache(filename, f.client)
+
 	// Return FOPEN_DIRECT_IO so content is not cached
 	return fh, fuse.FOPEN_DIRECT_IO, syscall.F_OK
 }
@@ -219,7 +223,8 @@ func (c *ValFile) Write(
 	}
 	common.Logger.Info("Updated val file", "name", prevExtVal.Name)
 
-	// And finally, retreive the val's extended data again
+	// And finally, retreive the val's extended data again, if we are using
+	// dynamic metadata
 	if !c.client.Config.StaticMeta {
 		extVal, _, err = c.client.APIClient.ValsAPI.ValsGet(ctx, prevExtVal.GetId()).Execute()
 		if err != nil {
@@ -228,7 +233,15 @@ func (c *ValFile) Write(
 		}
 		c.ExtendedData = extVal
 		c.ModifiedNow()
+	} else {
+		// Otherwise set the timestamp to just a bit ago, so editors think no more
+		// writes are needed
+		c.ModifiedAt = time.Now().Add(-1 * time.Second)
 	}
+
+	// Have deno automatically recache modules in the file
+	filename := ConstructFilename(c.BasicData.GetName(), ValType(c.BasicData.GetType()))
+	waitThenMaybeDenoCache(filename, c.client)
 
 	return uint32(len(data)), syscall.F_OK
 }

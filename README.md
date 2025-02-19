@@ -40,10 +40,10 @@ know!
 
 # Using Valfs
 
-At the top level, ValFS will create two folders, `vals` and `myblobs`, and a
-`deno.json`. The `deno.json` has settings to simulate val.town's development
-environment. Deno will automatically cache all packages referenced in vals, so
-that you get nice LSP completions.
+At the top level, ValFS will create a `myvals` folder and a `deno.json`. The
+`deno.json` has settings to simulate val.town's development environment. Deno
+will automatically cache all packages referenced in vals, so that you get nice
+LSP completions.
 
 When you update, remove, or create vals in `valfs` or on `val.town`'s website,
 the opposite should automatically update to reflect changes.
@@ -102,7 +102,32 @@ console.log("Hello world!")
 Also notice the magic shebang in the val files! Coming soon... you'll be able to
 execute vals.
 
+## Infrequently asked questions
+
+- I use neovim, but when I go to definition (gd), esm.sh doesn't return files
+   that end with `.tsx`, so I don't get LSP support or coloring :(
+
+Add this to your neovim configuration, to match on and ensure it recognizes it
+as typescript:
+```lua
+vim.filetype.add({
+  pattern = {
+    ['deno:/https/esm%.town/.*'] = 'typescript',
+  }
+}) 
+```
+
+- I use autosave, and valfs automatically writes after I've written. It's
+   really annoying since I need close and open the file every time it saves.
+
+Set the `--static-writess=true` flag to make sure that there's no write
+callbacks. You won't get versions in the module URL in the metadata of val
+files anymore, and the version won't automatically tick. Your writes will still
+go to val town, though. Note that autosaving might introduce some delay since
+writing requires API requests.
+
 ### Blobs Directory
+(coming soon!)
 
 <img src="./images/blobs.png" width="30%" alt="A binary in blobstore">
 
@@ -115,6 +140,7 @@ future, small files might automatically be ram based instead.
 
 # Known Issues
 
+- Val town doesn't have API support for creating/updating chron vals
 - When you "hop to definition" for a val town esm module (esm.town) val town
   serves deno modules with a name like "valname?v=22" without a ".tsx" at the
   end, so some editors won't give syntax highlighting. You can manually tell
@@ -124,9 +150,10 @@ future, small files might automatically be ram based instead.
 
 Disclaimer: this is still a work in progress! Soon, I will...
 
-- Add execute support (in progress) so you can do ./vals/foo.tsx and it runs on
-  val town's runtime and pipes logs to stdout (this will require a bit of
-  "reverse engineering" the API since it's internal)
+- Add execute support (in progress) so you can do ./myvals/foo.tsx and it runs
+on val town's runtime and pipes logs to stdout (this will require a bit of
+"reverse engineering" the API since it's internal)
+- Blob support is just buggy. It's coming soon!
 
 # TODOs
 
@@ -142,6 +169,7 @@ functionality
 - trash (to view previous versions)
 - ValFiles should only have one val data reference, not two, or it should be
   better documented how the lazy loading works.
+- There's shebangs at the top of files. But they don't do anything yet.
 
 ## ValFile Operations
 
@@ -160,4 +188,6 @@ Add options for:
 - When you execute a val with ./, use
   `deno run --lock=path/to/the-real-lock.lock script.X.tsx` and have val town
   generate the lock file (with HTTP val wrapper + `Deno.readTextFile()` on
-  lockfile)
+  lockfile). It can add a lockfile to a temp file at `/tmp/valid.lock` and the
+  "executable" run for it can use that lock.
+

@@ -14,9 +14,9 @@ import (
 	"github.com/hanwen/go-fuse/v2/fuse"
 
 	common "github.com/404wolf/valfs/common"
-	deno "github.com/404wolf/valfs/valfs/deno"
 	valfile "github.com/404wolf/valfs/valfs/vals"
 	vals "github.com/404wolf/valfs/valfs/vals"
+	editor "github.com/404wolf/valfs/valfs/editor"
 )
 
 // Top level inode of a val file system
@@ -42,7 +42,7 @@ func (c *ValFS) AddValsDir(ctx context.Context) {
 // edit their vals
 func (c *ValFS) AddDenoJSON(ctx context.Context) {
 	common.Logger.Info("Adding deno.json to valfs")
-	denoJsonInode := deno.NewDenoJson(&c.Inode, c.client, ctx)
+	denoJsonInode := editor.NewDenoJson(&c.Inode, c.client, ctx)
 	c.AddChild("deno.json", denoJsonInode, false)
 }
 

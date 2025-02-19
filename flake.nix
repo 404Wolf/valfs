@@ -16,12 +16,6 @@
     flake-utils.lib.eachDefaultSystem (
       system: let
         pkgs = import nixpkgs {inherit system;};
-        python = pkgs.python3.withPackages (
-          ps:
-            with ps; [
-              requests
-            ]
-        );
 
         # Configure treefmt
         treefmtEval = treefmt-nix.lib.evalModule pkgs {
@@ -36,6 +30,11 @@
             deno = {includes = ["*.ts" "*.tsx" "*.js" "*.jsx" "*.json"];};
           };
         };
+
+        python = pkgs.python3.withPackages (ps:
+          with ps; [
+            requests
+          ]);
       in {
         devShells = {
           default = pkgs.mkShell {
@@ -46,6 +45,7 @@
                 go
                 gopls
                 delve
+                deno
                 cobra-cli
                 openapi-generator-cli
                 inotify-tools

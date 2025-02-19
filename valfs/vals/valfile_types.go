@@ -14,11 +14,12 @@ import (
 type ValType string
 
 const (
-	Unknown ValType = "unknown"
-	HTTP    ValType = "http"
-	Script  ValType = "script"
-	Cron    ValType = "cron"
-	Email   ValType = "email"
+	Unknown  ValType = "unknown"
+	HTTP     ValType = "http"
+	Script   ValType = "script"
+	Cron     ValType = "cron"
+	Interval ValType = "interval"
+	Email    ValType = "email"
 )
 
 const (
@@ -28,19 +29,24 @@ const (
 )
 
 var abbreviate = map[ValType]string{
-	Unknown: "U",
-	HTTP:    "H",
-	Script:  "S",
-	Cron:    "C",
-	Email:   "E",
+	Unknown:  "U",
+	HTTP:     "H",
+	Script:   "S",
+	Interval: "C",
+	Email:    "E",
 }
 
 var unabbreviate = map[string]ValType{
-	"U": Unknown,
-	"H": HTTP,
-	"S": Script,
-	"C": Cron,
-	"E": Email,
+	"U":        Unknown,
+	"H":        HTTP,
+	"S":        Script,
+	"C":        Cron,
+	"E":        Email,
+	"http":     HTTP,
+	"script":   Script,
+	"cron":     Cron,
+	"email":    Email,
+	"interval": Cron,
 }
 
 const ValExtension = "tsx"
