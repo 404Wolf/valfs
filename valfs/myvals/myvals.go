@@ -63,7 +63,7 @@ func (c *MyVals) Unlink(ctx context.Context, name string) syscall.Errno {
 
 	_, err := c.client.APIClient.ValsAPI.ValsDelete(ctx, valFile.BasicData.Id).Execute()
 	if err != nil {
-		common.Logger.Error("Error deleting val", err)
+		common.Logger.Error("Error deleting val, %s", err)
 		return syscall.EIO
 	}
 	common.Logger.Infof("Deleted val %s", valFile.BasicData.Id)
@@ -83,6 +83,13 @@ func (c *MyVals) Create(
 	if valType == Unknown {
 		return nil, nil, 0, syscall.EINVAL
 	}
+
+	// Val town doesn't have API support for interval vals yet
+	if valType == Interval {
+		common.Logger.Info("Interval vals are not supported for creation through the val town API yet")
+		return nil, nil, 0, syscall.EINVAL
+	}
+
 	common.Logger.Infof("Creating val %s of type %s", valName, valType)
 
 	// Make a request to create the val
@@ -104,7 +111,7 @@ func (c *MyVals) Create(
 	// Create a val file that we can hand over
 	valFile, err := NewValFileFromExtendedVal(*val, c.client)
 	if err != nil {
-		common.Logger.Error("Error creating val file", err)
+		common.Logger.Error("Error creating val file, %s", err)
 		return nil, nil, 0, syscall.EIO
 	}
 	newInode := c.NewPersistentInode(
@@ -143,6 +150,10 @@ func (c *MyVals) Rename(
 	// Validate the new filename
 	valName, valType := ExtractFromFilename(newName)
 	if valType == Unknown {
+		return syscall.EINVAL
+	}
+	if valType == Interval {
+		common.Logger.Info("Interval vals are not supported for creation through the val town API yet")
 		return syscall.EINVAL
 	}
 
