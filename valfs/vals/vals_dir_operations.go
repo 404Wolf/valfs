@@ -20,7 +20,10 @@ func NewValDirOperations(client *common.Client) ValOperations {
 }
 
 // Implementation of ValOperations interface
-func (v *ValDirOperations) Create(ctx context.Context, name, valType, code, privacy string) (*valgo.ExtendedVal, error) {
+func (v *ValDirOperations) Create(
+	ctx context.Context,
+	name, valType, code, privacy string,
+) (*valgo.ExtendedVal, error) {
 	createReq := valgo.NewValsCreateRequest(code)
 	createReq.SetName(name)
 	createReq.SetType(valType)
@@ -41,7 +44,11 @@ func (v *ValDirOperations) Read(ctx context.Context, valId string) (*valgo.Exten
 	return val, nil
 }
 
-func (v *ValDirOperations) Update(ctx context.Context, valId string, name, valType string) (*valgo.ExtendedVal, error) {
+func (v *ValDirOperations) Update(
+	ctx context.Context,
+	valId string,
+	name, valType string,
+) (*valgo.ExtendedVal, error) {
 	updateReq := valgo.NewValsUpdateRequest()
 	updateReq.SetName(name)
 	updateReq.SetType(valType)
@@ -82,7 +89,10 @@ func (v *ValDirOperations) Delete(ctx context.Context, valId string) error {
 	return err
 }
 
-func (v *ValDirOperations) List(ctx context.Context, offset, limit int32) ([]valgo.BasicVal, error) {
+func (v *ValDirOperations) List(
+	ctx context.Context,
+	offset, limit int32,
+) ([]valgo.BasicVal, error) {
 	meResp, _, err := v.client.APIClient.MeAPI.MeGet(ctx).Execute()
 	if err != nil {
 		return nil, err
