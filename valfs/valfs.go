@@ -15,8 +15,8 @@ import (
 
 	common "github.com/404wolf/valfs/common"
 	deno "github.com/404wolf/valfs/valfs/deno"
-	myvals "github.com/404wolf/valfs/valfs/myvals"
-	valfile "github.com/404wolf/valfs/valfs/myvals"
+	vals "github.com/404wolf/valfs/valfs/vals"
+	valfile "github.com/404wolf/valfs/valfs/vals"
 )
 
 // Top level inode of a val file system
@@ -32,10 +32,10 @@ func NewValFS(client *common.Client) *ValFS {
 	return &ValFS{client: client}
 }
 
-func (c *ValFS) AddMyValsDir(ctx context.Context) {
-	common.Logger.Info("Adding myvals directory to valfs")
-	myValsDir := myvals.NewMyVals(&c.Inode, c.client, ctx)
-	c.AddChild("myvals", &myValsDir.Inode, true)
+func (c *ValFS) AddValsDir(ctx context.Context) {
+	common.Logger.Info("Adding vals directory to valfs")
+	valsDir := vals.NewVals(&c.Inode, c.client, ctx)
+	c.AddChild("vals", &valsDir.Inode, true)
 }
 
 // Add the deno.json file which provides the user context about how to run and
@@ -58,7 +58,7 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 		OnAdd: func(ctx context.Context) {
 			// Add the folder with all the vals
 			if c.client.Config.EnableValsDirectory {
-				c.AddMyValsDir(ctx)
+				c.AddValsDir(ctx)
 			}
 
 			// Add the deno.json file
@@ -116,7 +116,7 @@ func (c *ValFS) RunDenoCache(glob string) {
 			defer c.denoCacheMutex.Unlock()
 
 			common.Logger.Info("Caching Deno libraries")
-			cacheCmd := c.client.Config.MountPoint + "/myvals" + glob
+			cacheCmd := c.client.Config.MountPoint + "/vals" + glob
 			common.Logger.Info("Executing deno cache", "command", "deno cache --allow-import "+cacheCmd)
 			cmd := exec.Command("deno", "cache", "--allow-import", cacheCmd)
 			cmd.Start()

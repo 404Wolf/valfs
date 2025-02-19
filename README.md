@@ -19,7 +19,7 @@ Finally, run
 ./valfs mount ./valfsDir
 ```
 
-Now all your vals should show up as `.tsx` files under `./myvals`. You can:
+Now all your vals should show up as `.tsx` files under `./vals`. You can:
 - Edit them, and when you save new versions will automatically be created
 - Delete them (be careful!)
 
@@ -38,7 +38,7 @@ know!
 
 # Using Valfs
 
-At the top level, ValFS will create two folders, `myvals` and `myblobs`, and a
+At the top level, ValFS will create two folders, `vals` and `myblobs`, and a
 `deno.json`. The `deno.json` has settings to simulate val.town's development
 environment. Deno will automatically cache all packages referenced in vals, so
 that you get nice LSP completions.
@@ -54,7 +54,7 @@ changes.
   <img src="./images/searching-all.png" width="48%" alt="Searching across vals (ripgrep)" />
 </p>
 
-In `myvals`, you'll see files that look like this, with metadata at the top
+In `vals`, you'll see files that look like this, with metadata at the top
 about the val. All fields without a 🔒 can be manually updated, and all fields
 with a 🔒 will automatically be updated as you change the file. Depending on
 what text editor you use, you may have to reload the file after saving.
@@ -123,7 +123,7 @@ future, small files might automatically be ram based instead.
 
 Disclaimer: this is still a work in progress! Soon, I will...
 
-- Add execute support (in progress) so you can do ./myvals/foo.tsx and it runs
+- Add execute support (in progress) so you can do ./vals/foo.tsx and it runs
 on val town's runtime and pipes logs to stdout (this will require a bit of
 "reverse engineering" the API since it's internal)
 

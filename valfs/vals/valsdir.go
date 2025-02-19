@@ -17,38 +17,39 @@ import (
 const WAIT_BEFORE_DENO_CACHING = time.Second * 1
 
 // The folder with all of my vals in it
-type MyVals struct {
+type ValsDir struct {
 	fs.Inode
+
 	client *common.Client
 }
 
-var _ = (fs.NodeRenamer)((*MyVals)(nil))
-var _ = (fs.NodeCreater)((*MyVals)(nil))
-var _ = (fs.NodeUnlinker)((*MyVals)(nil))
+var _ = (fs.NodeRenamer)((*ValsDir)(nil))
+var _ = (fs.NodeCreater)((*ValsDir)(nil))
+var _ = (fs.NodeUnlinker)((*ValsDir)(nil))
 
 // Set up background refresh of vals and retreive an auto updating folder of
 // val files
-func NewMyVals(parent *fs.Inode, client *common.Client, ctx context.Context) *MyVals {
-	myValsDir := &MyVals{client: client}
+func NewVals(parent *fs.Inode, client *common.Client, ctx context.Context) *ValsDir {
+	valsDir := &ValsDir{client: client}
 	attrs := fs.StableAttr{Mode: syscall.S_IFDIR | 0555}
-	parent.NewPersistentInode(ctx, myValsDir, attrs)
+	parent.NewPersistentInode(ctx, valsDir, attrs)
 
-	refreshVals(ctx, &myValsDir.Inode, *client)
+	refreshVals(ctx, &valsDir.Inode, *client)
 	if client.Config.AutoRefresh {
 		ticker := time.NewTicker(time.Duration(client.Config.AutoRefreshInterval) * time.Second)
 		go func() {
 			for range ticker.C {
-				refreshVals(ctx, &myValsDir.Inode, *client)
+				refreshVals(ctx, &valsDir.Inode, *client)
 				common.Logger.Info("Refreshed vals")
 			}
 		}()
 	}
 
-	return myValsDir
+	return valsDir
 }
 
 // Handle deletion of a file by also deleting the val
-func (c *MyVals) Unlink(ctx context.Context, name string) syscall.Errno {
+func (c *ValsDir) Unlink(ctx context.Context, name string) syscall.Errno {
 	common.Logger.Infof("Deleting val %s", name)
 	child := c.GetChild(name)
 	if child == nil {
@@ -72,7 +73,7 @@ func (c *MyVals) Unlink(ctx context.Context, name string) syscall.Errno {
 }
 
 // Create a new val on new file creation
-func (c *MyVals) Create(
+func (c *ValsDir) Create(
 	ctx context.Context,
 	name string,
 	flags uint32,
@@ -127,7 +128,7 @@ func (c *MyVals) Create(
 }
 
 // Rename a val, and change the name in valtown
-func (c *MyVals) Rename(
+func (c *ValsDir) Rename(
 	ctx context.Context,
 	oldName string,
 	newParent fs.InodeEmbedder,
@@ -136,7 +137,7 @@ func (c *MyVals) Rename(
 ) syscall.Errno {
 	// Check if we're moving between directories
 	if newParent.EmbeddedInode().StableAttr().Ino != c.Inode.StableAttr().Ino {
-		common.Logger.Info("Cannot move val out of the `myvals` directory")
+		common.Logger.Info("Cannot move val out of the `vals` directory")
 		return syscall.EINVAL
 	}
 

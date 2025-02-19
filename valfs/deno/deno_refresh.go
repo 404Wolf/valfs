@@ -39,7 +39,7 @@ func (dc *DenoCacher) DenoCache(glob string) {
 				"deno",
 				"cache",
 				"--allow-import",
-				dc.client.Config.MountPoint+"/myvals",
+				dc.client.Config.MountPoint+"/vals",
 			)
 			cmd.Start()
 			cmd.Process.Release()

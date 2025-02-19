@@ -13,7 +13,7 @@ var previousValIds = make(map[string]*ValFile)
 
 // Refresh the list of vals in the filesystem
 func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) error {
-	newVals, err := getMyVals(ctx, client)
+	newVals, err := getVals(ctx, client)
 	newValsIdsToBasicVals := make(map[string]valgo.BasicVal)
 	for _, newVal := range newVals {
 		newValsIdsToBasicVals[newVal.GetId()] = newVal
@@ -66,7 +66,7 @@ func refreshVals(ctx context.Context, root *fs.Inode, client common.Client) erro
 const lookupCap = 99
 
 // Get a list of all the vals belonging to the authed user
-func getMyVals(ctx context.Context, client common.Client) ([]valgo.BasicVal, error) {
+func getVals(ctx context.Context, client common.Client) ([]valgo.BasicVal, error) {
 	common.Logger.Info("Fetching all of my vals")
 
 	// Fetch my ID
