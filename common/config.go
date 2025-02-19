@@ -34,4 +34,7 @@ type ValfsConfig struct {
 	// Whether to only show file metadata that is static (omit versions like ?v=
 	// in urls, or the version field, which change on writes)
 	StaticMeta bool
+
+	// Whether to have vals be executable so that you can "run" them
+	ExecutableVals bool
 }

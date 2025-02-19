@@ -12,9 +12,10 @@ import (
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
 
-// VAL_FILE_FLAGS defines the file permissions and type for val files
+// ValFileFlags defines the file permissions and type for val files
 // S_IFREG indicates a regular file, 0o777 gives full rwx permissions
-const VAL_FILE_FLAGS = syscall.S_IFREG | 0o777
+const ValFileFlagsExecute = syscall.S_IFREG | 0o774
+const ValFileFlagsNoExecute = syscall.S_IFREG | 0o664
 
 // ValFile represents a file in the filesystem that corresponds to a val
 type ValFile struct {
@@ -216,7 +217,7 @@ func (f *ValFile) Getattr(
 
 	// Handle basic attributes if extended data isn't loaded
 	if f.ExtendedData == nil {
-		out.Mode = VAL_FILE_FLAGS
+		f.assignValMode(out)
 		out.Size = uint64(len(f.BasicData.GetCode()) + 500)
 		modified := time.Unix(0, 0)
 		out.SetTimes(&modified, &modified, &modified)
@@ -231,7 +232,7 @@ func (f *ValFile) Getattr(
 	}
 
 	out.Size = uint64(contentLen)
-	out.Mode = VAL_FILE_FLAGS
+	f.assignValMode(out)
 
 	modified := &f.ModifiedAt
 	out.SetTimes(modified, modified, modified)
@@ -255,10 +256,19 @@ func (f *ValFile) Setattr(
 	common.Logger.Info("Setting attributes for val file", "name", f.BasicData.Name)
 
 	out.Size = in.Size
-	out.Mode = VAL_FILE_FLAGS
+	f.assignValMode(out)
 	out.Atime = in.Atime
 	out.Mtime = in.Mtime
 	out.Ctime = in.Ctime
 
 	return syscall.F_OK
+}
+
+func (f *ValFile) assignValMode(out *fuse.AttrOut) {
+	if f.client.Config.ExecutableVals {
+		out.Mode = ValFileFlagsExecute
+	} else {
+		out.Mode = ValFileFlagsNoExecute
+	}
+
 }

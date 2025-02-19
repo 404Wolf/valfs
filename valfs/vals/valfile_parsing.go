@@ -130,9 +130,12 @@ func (v *ValPackage) ToText() (*string, error) {
 	}
 
 	combined := frontmatter + v.Val.GetCode()
-	finalized := AffixShebang(combined) // add a shebang so val can be executed
 
-	return &finalized, nil
+	if v.client.Config.ExecutableVals {
+		combined = AffixShebang(combined)
+	}
+
+	return &combined, nil
 }
 
 func (v *ValPackage) Len() (int, error) {

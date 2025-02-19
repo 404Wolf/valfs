@@ -81,6 +81,7 @@ func ValfsInit() {
 	mountCmd.Flags().BoolVar(&valfsConfig.EnableBlobsDirectory, "blobs-directory", true, "add a directory for your blobs")
 	mountCmd.Flags().BoolVar(&valfsConfig.GoFuseDebug, "fuse-debug", false, "enable go fuse's debug mode")
 	mountCmd.Flags().BoolVar(&valfsConfig.StaticMeta, "static-writes", false, "ensure val file metadata doesn't change on writes")
+	mountCmd.Flags().BoolVar(&valfsConfig.ExecutableVals, "executable-vals", true, "whether vals have the executable bit, so you can \"run\" them")
 
 	rootCmd.AddCommand(mountCmd)
 }
