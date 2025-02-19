@@ -21,7 +21,7 @@ func refreshBlobs(
 	// Fetch the latest list of blobs from the server
 	newBlobs, err := getMyBlobs(ctx, myBlobs.client)
 	if err != nil {
-		myBlobs.client.Logger.Error("Error fetching blobs", err)
+		common.Logger.Error("Error fetching blobs", err)
 		return nil
 	}
 

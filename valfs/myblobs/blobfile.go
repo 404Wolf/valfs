@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"syscall"
@@ -30,8 +29,6 @@ type BlobFile struct {
 	Meta    valgo.BlobListingItem
 	Upload  *BlobUpload
 	myBlobs *MyBlobs
-
-	client *common.Client
 }
 
 var _ = (fs.NodeOpener)((*BlobFile)(nil))
@@ -42,7 +39,8 @@ var _ = (fs.NodeReleaser)((*BlobFile)(nil))
 
 // BlobFileHandle represents an open file handle
 type BlobFileHandle struct {
-	file *os.File
+	client *common.Client
+	file   *os.File
 }
 
 // NewBlobFileAuto creates a new BlobFile with a random UUID
@@ -58,7 +56,7 @@ func NewBlobFile(
 	data valgo.BlobListingItem,
 	myBlobs *MyBlobs,
 ) *BlobFile {
-	log.Printf("Creating new BlobFile with key %s", data.Key)
+	common.Logger.Info("Creating new BlobFile with key %s", data.Key)
 	blobFile := &BlobFile{
 		Meta:    data,
 		myBlobs: myBlobs,
@@ -69,7 +67,7 @@ func NewBlobFile(
 
 // NewBlobFileHandle creates a new BlobFileHandle for the given file
 func NewBlobFileHandle(file *os.File) *BlobFileHandle {
-	log.Printf("Creating new BlobFileHandle for %s", file.Name())
+	common.Logger.Info("Creating new BlobFileHandle for %s", file.Name())
 	return &BlobFileHandle{file: file}
 }
 
@@ -113,11 +111,11 @@ func (f *BlobFile) Open(
 	ctx context.Context,
 	openFlags uint32,
 ) (fs.FileHandle, uint32, syscall.Errno) {
-	log.Printf("Opening blob file %s with flags %d", f.Meta.Key, openFlags)
+	common.Logger.Info("Opening blob file %s with flags %d", f.Meta.Key, openFlags)
 
 	file, existed, err := f.EnsureTempFile()
 	if err != nil {
-		log.Printf("Failed to open temporary file for %s: %v", f.Meta.Key, err)
+		common.Logger.Info("Failed to open temporary file for %s: %v", f.Meta.Key, err)
 		return nil, 0, syscall.EIO
 	}
 
@@ -125,7 +123,7 @@ func (f *BlobFile) Open(
 	if !existed || (openFlags&uint32(os.O_APPEND) != 0) {
 		fileInfo, _ := file.Stat()
 		if fileInfo.Size() == 0 {
-			log.Printf("Fetching content for blob %s", f.Meta.Key)
+			common.Logger.Info("Fetching content for blob %s", f.Meta.Key)
 			resp, err := f.myBlobs.client.APIClient.RawRequest(
 				ctx,
 				http.MethodGet,
@@ -133,7 +131,7 @@ func (f *BlobFile) Open(
 				nil,
 			)
 			if err != nil && !os.IsNotExist(err) {
-				log.Printf("Failed to fetch blob content for %s: %v", f.Meta.Key, err)
+				common.Logger.Info("Failed to fetch blob content for %s: %v", f.Meta.Key, err)
 				file.Close()
 				f.RemoveTempFile()
 				return nil, 0, syscall.EIO
@@ -143,7 +141,7 @@ func (f *BlobFile) Open(
 				file.Seek(0, 0)
 				_, err = io.Copy(file, resp.Body)
 				if err != nil {
-					log.Printf("Failed to copy blob content to file for %s: %v", f.Meta.Key, err)
+					common.Logger.Info("Failed to copy blob content to file for %s: %v", f.Meta.Key, err)
 					file.Close()
 					f.RemoveTempFile()
 					return nil, 0, syscall.EIO
@@ -170,7 +168,7 @@ func (f *BlobFileHandle) Read(
 	buf []byte,
 	off int64,
 ) (fuse.ReadResult, syscall.Errno) {
-	log.Printf("Reading %d bytes at offset %d from %s", len(buf), off, f.file.Name())
+	common.Logger.Info("Reading %d bytes at offset %d from %s", len(buf), off, f.file.Name())
 	return fuse.ReadResultFd(uintptr(f.file.Fd()), off, len(buf)), syscall.F_OK
 }
 
@@ -180,7 +178,7 @@ func (f *BlobFile) Getattr(
 	fh fs.FileHandle,
 	out *fuse.AttrOut,
 ) syscall.Errno {
-	log.Printf("Getting attributes for blob %s", f.Meta.Key)
+	common.Logger.Info("Getting attributes for blob %s", f.Meta.Key)
 	out.Mode = BlobFileFlags
 	out.Size = uint64(*f.Meta.Size)
 	modified := f.Meta.GetLastModified()
@@ -195,7 +193,7 @@ func (f *BlobFile) Setattr(
 	in *fuse.SetAttrIn,
 	out *fuse.AttrOut,
 ) syscall.Errno {
-	log.Printf("Setting attributes for blob %s", f.Meta.Key)
+	common.Logger.Info("Setting attributes for blob %s", f.Meta.Key)
 	out.Mode = BlobFileFlags
 	return syscall.F_OK
 }
@@ -208,12 +206,12 @@ func (f *BlobFile) Write(
 	off int64,
 ) (uint32, syscall.Errno) {
 	bfh := fh.(*BlobFileHandle)
-	log.Printf("Starting write operation of %d bytes at offset %d for %s", len(data), off, f.Meta.Key)
+	common.Logger.Info("Starting write operation of %d bytes at offset %d for %s", len(data), off, f.Meta.Key)
 
 	// Get current file size
 	fileInfo, err := bfh.file.Stat()
 	if err != nil {
-		f.client.Logger.Error("Failed to stat file for %s: %v", err, f.Meta.Key)
+		common.Logger.Error("Failed to stat file for %s: %v", err, f.Meta.Key)
 		return 0, syscall.EIO
 	}
 
@@ -225,21 +223,21 @@ func (f *BlobFile) Write(
 	// Write to temporary file
 	wrote, err := bfh.file.WriteAt(data, off)
 	if err != nil {
-		f.client.Logger.Error("Failed to write to temporary file for %s: %v", err, f.Meta.Key)
+		common.Logger.Error("Failed to write to temporary file for %s: %v", err, f.Meta.Key)
 		return 0, syscall.EIO
 	}
-	log.Printf("Wrote %d bytes at offset %d to temporary file for %s", wrote, off, f.Meta.Key)
+	common.Logger.Info("Wrote %d bytes at offset %d to temporary file for %s", wrote, off, f.Meta.Key)
 
 	// Write to upload
 	if err := f.Upload.Write(off, data, bfh.file); err != nil {
-		f.client.Logger.Error("Failed to write to upload for %s: %v", err, f.Meta.Key)
+		common.Logger.Error("Failed to write to upload for %s: %v", err, f.Meta.Key)
 		return 0, syscall.EIO
 	}
 
 	// Update metadata
 	fileInfo, err = bfh.file.Stat()
 	if err != nil {
-		f.client.Logger.Error("Failed to stat temporary file for %s: %v", err, f.Meta.Key)
+		common.Logger.Error("Failed to stat temporary file for %s: %v", err, f.Meta.Key)
 		return 0, syscall.EIO
 	}
 
@@ -248,21 +246,21 @@ func (f *BlobFile) Write(
 	f.Meta.SetSize(int32(newSize))
 	f.Meta.SetLastModified(time.Now())
 
-	log.Printf("Successfully wrote %d bytes to %s (size changed from %d to %d bytes)",
+	common.Logger.Info("Successfully wrote %d bytes to %s (size changed from %d to %d bytes)",
 		wrote, f.Meta.Key, oldSize, newSize)
 	return uint32(wrote), syscall.F_OK
 }
 
 // Release handles cleanup when the file is closed
 func (f *BlobFile) Release(ctx context.Context, fh fs.FileHandle) syscall.Errno {
-	log.Printf("Releasing blob file %s", f.Meta.Key)
+	common.Logger.Info("Releasing blob file %s", f.Meta.Key)
 
 	if f.Upload.Ongoing() {
-		log.Printf("Waiting for upload to finish for %s", f.Meta.Key)
+		common.Logger.Info("Waiting for upload to finish for %s", f.Meta.Key)
 		f.Upload.Finish()
 	}
 
-	log.Printf("Removed temporary file %s", f.tempFilePath())
+	common.Logger.Info("Removed temporary file %s", f.tempFilePath())
 	f.RemoveTempFile()
 
 	return syscall.F_OK

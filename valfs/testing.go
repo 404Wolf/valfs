@@ -85,7 +85,6 @@ func SetupTests(t *testing.T) TestData {
 		cmd = exec.Command(
 			valfsPath,
 			"mount",
-			"--verbose",
 			"--log-file",
 			testLogOut,
 			testDir,

@@ -6,28 +6,22 @@ import (
 	"strings"
 
 	"github.com/404wolf/valfs/cmd"
+	"github.com/404wolf/valfs/common"
 	"go.uber.org/zap"
 )
-
-func SetupLogger() *zap.SugaredLogger {
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
-	sugar := logger.Sugar()
-	return sugar
-}
 
 func isShebangCall() bool {
 	return len(os.Args) > 1 && strings.HasSuffix(os.Args[1], ".tsx")
 }
 
 func main() {
-	logger := SetupLogger()
+	common.Logger = zap.NewNop().Sugar()
 
 	if isShebangCall() {
 		fmt.Println("Shebang call detected. Not supported yet.")
 		return
 	} else {
-		err := cmd.Execute(logger)
+		err := cmd.Execute()
 
 		if err != nil {
 			os.Exit(1)

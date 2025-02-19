@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/404wolf/valgo"
-	"go.uber.org/zap"
 )
 
 type Client struct {
@@ -15,7 +14,6 @@ type Client struct {
 	Config     ValfsConfig
 	DenoCacher *DenoCacher
 	Id         uint64
-	Logger     *zap.SugaredLogger
 	Started    time.Time
 	User       valgo.User
 }
@@ -25,9 +23,7 @@ func NewClient(
 	ctx context.Context,
 	refresh bool,
 	config ValfsConfig,
-	logFile string,
-	verbose bool,
-) *Client {
+) (*Client, error) {
 	apiClientConfig := valgo.NewConfiguration()
 	apiClientConfig.AddDefaultHeader(
 		"Authorization",
@@ -35,7 +31,11 @@ func NewClient(
 	)
 	apiClient := NewAPIClient(apiClientConfig)
 
-	userResp, _, _ := apiClient.MeAPI.MeGet(ctx).Execute()
+	userResp, _, err := apiClient.MeAPI.MeGet(ctx).Execute()
+	if err != nil {
+		return nil, err
+	}
+
 	user := valgo.NewUser(
 		userResp.Id,
 		userResp.Bio,
@@ -55,8 +55,5 @@ func NewClient(
 		User:       *user,
 	}
 
-	// Setup logger after client is initialized
-	client.Logger = client.setupLogger(logFile, verbose)
-
-	return client
+	return client, nil
 }

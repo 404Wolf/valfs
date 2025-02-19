@@ -7,36 +7,52 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// Set up a logger for valfs. If logFile is an emtpy string then do not log to
-// a file, if stdout is true then log to standard out as well.
-func (c *Client) setupLogger(logFile string, stdout bool) *zap.SugaredLogger {
-	// Create encoders
-	consoleEncoder := zapcore.NewConsoleEncoder(zapcore.EncoderConfig{
-		TimeKey:       "time",
-		LevelKey:      "level",
-		NameKey:       "logger",
-		CallerKey:     "caller",
-		MessageKey:    "msg",
-		StacktraceKey: "stacktrace",
-		EncodeLevel:   zapcore.CapitalColorLevelEncoder,
-		EncodeTime:    zapcore.ISO8601TimeEncoder,
-		EncodeCaller:  zapcore.ShortCallerEncoder,
-	})
+var Logger *zap.SugaredLogger
+
+// SetupLogger configures a Zap logger with console and/or file output.
+// Parameters:
+//   - logFile: path to log file (empty string disables file logging)
+//   - logLevel: minimum log level ("debug", "info", "warn", "error")
+//   - silent: if true, disables console output
+// Returns a configured SugaredLogger instance.
+func SetupLogger(logFile string, logLevel string, silent bool) *zap.SugaredLogger {
+	// Convert string level to zapcore.Level
+	level := zapcore.InfoLevel // default to info
+	switch logLevel {
+	case "debug":
+		level = zapcore.DebugLevel
+	case "info":
+		level = zapcore.InfoLevel
+	case "warn":
+		level = zapcore.WarnLevel
+	case "error":
+		level = zapcore.ErrorLevel
+	}
 
 	cores := []zapcore.Core{}
 
-	// Start with console core
-	if stdout {
+	// Add console logging if not silent
+	if !silent {
+		consoleConfig := zapcore.EncoderConfig{
+			TimeKey:       "time",
+			LevelKey:      "level",
+			NameKey:       "logger",
+			CallerKey:     "caller",
+			MessageKey:    "msg",
+			StacktraceKey: "stacktrace",
+			EncodeLevel:   zapcore.CapitalColorLevelEncoder,
+			EncodeTime:    zapcore.ISO8601TimeEncoder,
+			EncodeCaller:  zapcore.ShortCallerEncoder,
+		}
+		consoleEncoder := zapcore.NewConsoleEncoder(consoleConfig)
 		cores = append(cores,
-			zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), zapcore.DebugLevel),
+			zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), level),
 		)
 	}
 
-	// Add file logging if LogFile is specified
+	// Add file logging if logFile is specified
 	if logFile != "" {
-		logFile, _ := os.Create(logFile)
-
-		fileEncoder := zapcore.NewJSONEncoder(zapcore.EncoderConfig{
+		fileConfig := zapcore.EncoderConfig{
 			TimeKey:       "time",
 			LevelKey:      "level",
 			NameKey:       "logger",
@@ -46,13 +62,12 @@ func (c *Client) setupLogger(logFile string, stdout bool) *zap.SugaredLogger {
 			EncodeLevel:   zapcore.CapitalLevelEncoder,
 			EncodeTime:    zapcore.ISO8601TimeEncoder,
 			EncodeCaller:  zapcore.ShortCallerEncoder,
-		})
-
-		cores = append(cores, zapcore.NewCore(
-			fileEncoder,
-			zapcore.AddSync(logFile),
-			zapcore.DebugLevel,
-		))
+		}
+		logFile, _ := os.Create(logFile)
+		fileEncoder := zapcore.NewJSONEncoder(fileConfig)
+		cores = append(cores,
+			zapcore.NewCore(fileEncoder, zapcore.AddSync(logFile), level),
+		)
 	}
 
 	// Create multi-core logger

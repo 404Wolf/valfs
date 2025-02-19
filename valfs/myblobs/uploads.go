@@ -124,7 +124,7 @@ func (w *BlobUpload) startUpload() {
 
 	duration := time.Since(startTime)
 	if err != nil {
-		w.client.Logger.Error("Failed to upload file %v after %v", err, w.BlobFile.Meta.Key, duration)
+		common.Logger.Error("Failed to upload file %v after %v", err, w.BlobFile.Meta.Key, duration)
 	} else {
 		log.Printf("Successfully uploaded file %s in %v", w.BlobFile.Meta.Key, duration)
 	}

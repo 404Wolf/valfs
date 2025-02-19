@@ -9,7 +9,7 @@ run: build
 	./build
 
 test: build
-	GOMAXPROCS=1 go test -v ./...
+	go test -v ./...
 
 clean:
 	rm -f build
