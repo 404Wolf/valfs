@@ -177,7 +177,11 @@ func (c *ValFile) Write(
 		common.Logger.Error("Error updating val package", "error", err)
 		return 0, syscall.EIO
 	}
-	newValPackage.UpdateVal(string(data))
+	err = newValPackage.UpdateVal(string(data))
+	if err != nil {
+		common.Logger.Error("Bad input", "error", err)
+		return 0, syscall.EINVAL
+	}
 	extVal := newValPackage.Val
 
 	// Update metadata (which we harvest from the top of the file) seperately, we
