@@ -86,6 +86,8 @@ func SetupTests(t *testing.T) TestData {
 			valfsPath,
 			"mount",
 			"--log-file",
+      "--log-level",
+      "warn",
 			testLogOut,
 			testDir,
 		)
