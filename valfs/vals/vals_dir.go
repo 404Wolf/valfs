@@ -192,7 +192,8 @@ func (c *ValsDir) Rename(
 	valFile := inode.Operations().(*ValFile)
 
 	common.Logger.Infof("Updating val %s to new name %s and type %s", oldName, valName, valType)
-	extVal, err := c.GetValOps().Update(ctx, valFile.BasicData.Id, valName, string(valType))
+	valFile.ExtendedData.Name = valName
+	extVal, err := c.GetValOps().Update(ctx, valFile.BasicData.Id, valFile.ExtendedData)
 	if err != nil {
 		common.Logger.Errorf("Error updating val %s: %v", oldName, err)
 		return syscall.EIO

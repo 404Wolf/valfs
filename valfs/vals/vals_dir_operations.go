@@ -47,18 +47,19 @@ func (v *ValDirOperations) Read(ctx context.Context, valId string) (*valgo.Exten
 func (v *ValDirOperations) Update(
 	ctx context.Context,
 	valId string,
-	name, valType string,
+	extVal *valgo.ExtendedVal,
 ) (*valgo.ExtendedVal, error) {
 	updateReq := valgo.NewValsUpdateRequest()
-	updateReq.SetName(name)
-	updateReq.SetType(valType)
+	updateReq.SetName(extVal.Name)
+	updateReq.SetType(extVal.Type)
+	updateReq.SetPrivacy(extVal.Privacy)
 
 	_, err := v.client.APIClient.ValsAPI.ValsUpdate(ctx, valId).ValsUpdateRequest(*updateReq).Execute()
 	if err != nil {
 		return nil, err
 	}
 
-	extVal, _, err := v.client.APIClient.ValsAPI.ValsGet(ctx, valId).Execute()
+	extVal, _, err = v.client.APIClient.ValsAPI.ValsGet(ctx, valId).Execute()
 
 	return extVal, nil
 }

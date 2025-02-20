@@ -12,6 +12,7 @@ import (
 	"github.com/hanwen/go-fuse/v2/fuse"
 
 	common "github.com/404wolf/valfs/common"
+	blobs "github.com/404wolf/valfs/valfs/blobs"
 	editor "github.com/404wolf/valfs/valfs/editor"
 	vals "github.com/404wolf/valfs/valfs/vals"
 )
@@ -35,6 +36,12 @@ func (c *ValFS) AddValsDir(ctx context.Context) {
 	c.AddChild("vals", valsDir.GetInode(), true)
 }
 
+func (c *ValFS) AddBlobsDir(ctx context.Context) {
+	common.Logger.Info("Adding blobs directory to valfs")
+	blobsDir := blobs.NewBlobsDir(&c.Inode, c.client, ctx)
+	c.AddChild("blobs", &blobsDir.Inode, true)
+}
+
 // Add the deno.json file which provides the user context about how to run and
 // edit their vals
 func (c *ValFS) AddDenoJSON(ctx context.Context) {
@@ -56,6 +63,11 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 			// Add the folder with all the vals
 			if c.client.Config.EnableValsDirectory {
 				c.AddValsDir(ctx)
+			}
+
+			// Add the folder with all the blobs
+			if c.client.Config.EnableBlobsDirectory {
+				c.AddBlobsDir(ctx)
 			}
 
 			// Add the deno.json file

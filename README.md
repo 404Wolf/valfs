@@ -133,7 +133,7 @@ requires API requests.
 
 <img src="./images/blobs.png" width="30%" alt="A binary in blobstore">
 
-The blobs directory, `myblobs`, is pretty simple. You can view, edit, rename, or
+The blobs directory, `blobs`, is pretty simple. You can view, edit, rename, or
 stat all your blob files. You can copy things in or out of this folder.
 
 Internally, the files are fetched and referenced to temp files, so there is IO

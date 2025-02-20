@@ -4,6 +4,8 @@ go 1.22
 
 require (
 	github.com/404wolf/valgo v0.0.3
+	github.com/djherbis/buffer v1.2.0
+	github.com/djherbis/nio/v3 v3.0.1
 	github.com/goccy/go-yaml v1.15.13
 	github.com/hanwen/go-fuse/v2 v2.7.2
 	github.com/spf13/cobra v1.8.1
