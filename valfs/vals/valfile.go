@@ -14,8 +14,8 @@ import (
 
 // ValFileFlags defines the file permissions and type for val files
 // S_IFREG indicates a regular file, 0o777 gives full rwx permissions
-const ValFileFlagsExecute = syscall.S_IFREG | 0o774
-const ValFileFlagsNoExecute = syscall.S_IFREG | 0o664
+const ValFileFlagsExecute = syscall.S_IFREG | 0o777
+const ValFileFlagsNoExecute = syscall.S_IFREG | 0o666
 
 // ValFile represents a file in the filesystem that corresponds to a val
 type ValFile struct {
@@ -180,13 +180,18 @@ func (c *ValFile) Write(
 	newValPackage.UpdateVal(string(data))
 	extVal := newValPackage.Val
 
+	// Update metadata (which we harvest from the top of the file) seperately, we
+	// can't change the code and metadata at the same time because of a val town
+	// api bug.
+	c.parent.GetValOps().Update(ctx, prevExtVal.GetId(), extVal)
+
+	//  Update the val's code in valtown
 	err = c.parent.GetValOps().UpdateCode(ctx, prevExtVal.GetId(), newValPackage.Val.GetCode())
 	if err != nil {
 		common.Logger.Error("Error updating val code", "error", err)
 		return 0, syscall.EIO
 	}
 
-	// Update metadata based on configuration
 	if !c.client.Config.StaticMeta {
 		extVal, err = c.parent.GetValOps().Read(ctx, prevExtVal.GetId())
 		if err != nil {
