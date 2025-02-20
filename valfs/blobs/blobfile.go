@@ -26,7 +26,6 @@ type BlobFile struct {
 	fs.Inode
 
 	Meta   valgo.BlobListingItem
-	Upload *BlobUpload
 	blobs  *BlobsDir
 }
 
@@ -59,7 +58,6 @@ func NewBlobFile(
 		Meta:  data,
 		blobs: blobsDir,
 	}
-	blobFile.Upload = &BlobUpload{BlobFile: blobFile}
 	return blobFile
 }
 
@@ -199,11 +197,6 @@ func (f *BlobFile) Setattr(
 // Release handles cleanup when the file is closed
 func (f *BlobFile) Release(ctx context.Context, fh fs.FileHandle) syscall.Errno {
 	common.Logger.Info("Releasing blob file %s", f.Meta.Key)
-
-	if f.Upload.Ongoing() {
-		common.Logger.Info("Waiting for upload to finish for %s", f.Meta.Key)
-		f.Upload.Finish()
-	}
 
 	common.Logger.Info("Removed temporary file %s", f.tempFilePath())
 	f.RemoveTempFile()

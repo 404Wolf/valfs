@@ -38,7 +38,7 @@ func refreshBlobs(
 		if inode != nil {
 			blobFile := inode.Operations().(*BlobFile)
 			// The blob already exists, check if it needs updating
-			if !blobFile.Upload.Ongoing() && newBlob.GetLastModified().After(blobFile.Meta.GetLastModified()) {
+			if newBlob.GetLastModified().After(blobFile.Meta.GetLastModified()) {
 				blobFile.Meta = newBlob
 				root.GetChild(newBlob.Key).NotifyContent(0, 0)
 				log.Printf("Updated blob %s, found newer on valtown", newBlob.Key)

@@ -10,9 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
-	"github.com/hanwen/go-fuse/v2/fuse"
 
 	common "github.com/404wolf/valfs/common"
 )
@@ -34,7 +32,6 @@ type BlobsDir struct {
 	client *common.Client
 }
 
-var _ = (fs.NodeCreater)((*BlobsDir)(nil))
 var _ = (fs.NodeUnlinker)((*BlobsDir)(nil))
 var _ = (fs.NodeRenamer)((*BlobsDir)(nil))
 
@@ -73,62 +70,6 @@ func (c *BlobsDir) Unlink(ctx context.Context, name string) syscall.Errno {
 	}
 
 	return syscall.F_OK
-}
-
-// Create a new blob on new file creation
-func (c *BlobsDir) Create(
-	ctx context.Context,
-	name string,
-	flags uint32,
-	mode uint32,
-	out *fuse.EntryOut,
-) (node *fs.Inode, fh fs.FileHandle, fuseFlags uint32, code syscall.Errno) {
-	if ok := validateName(name); !ok {
-		return nil, nil, 0, syscall.EINVAL
-	}
-
-	common.Logger.Info("Creating blob " + name)
-
-	// The val town API does not give us the blob listing after we make it so we
-	// guess what it would be instead of doing a second round trip
-	blobListingItem := valgo.NewBlobListingItem(name)
-	blobListingItem.SetKey(name)
-	blobListingItem.SetSize(0)
-	blobListingItem.SetLastModified(time.Now().Add(-10 * time.Second))
-	blobFile := NewBlobFile(*blobListingItem, c)
-
-	// Create the empty blob on valtown
-	tempFile, _, err := blobFile.EnsureTempFile()
-	if err != nil {
-		common.Logger.Error("Failed to open temporary file", err)
-		return nil, nil, 0, syscall.EIO
-	}
-
-	// Create the new inode
-	newInode := c.NewPersistentInode(
-		ctx,
-		blobFile,
-		fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
-
-	// Create the new entry in val town blob store
-	resp, err := c.client.APIClient.RawRequest(
-		ctx,
-		http.MethodPost,
-		"/v1/blob/"+name,
-		tempFile,
-	)
-	if err != nil {
-		common.Logger.Error("Failed to create blob", err)
-		return nil, nil, 0, syscall.EIO
-	} else if resp.StatusCode != http.StatusCreated {
-		common.Logger.Error("Failed to create blob", resp)
-		return nil, nil, 0, syscall.EIO
-	}
-
-	// Open the file handle
-	fileHandle, _, _ := blobFile.Open(ctx, flags)
-
-	return newInode, fileHandle, fuse.FOPEN_DIRECT_IO, syscall.F_OK
 }
 
 // Rename the blob file. This simultaniously pulls the val from the valtown
