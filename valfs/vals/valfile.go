@@ -194,7 +194,7 @@ func (c *ValFile) Write(
 	// Update metadata (which we harvest from the top of the file) seperately, we
 	// can't change the code and metadata at the same time because of a val town
 	// api bug.
-	c.parent.GetValOps().Update(ctx, prevExtVal.GetId(), extVal)
+	c.parent.GetValOps().Update(ctx, extVal)
 
 	//  Update the val's code in valtown
 	err = c.parent.GetValOps().UpdateCode(ctx, prevExtVal.GetId(), newValPackage.Val.GetCode())

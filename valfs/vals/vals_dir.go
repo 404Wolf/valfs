@@ -189,11 +189,21 @@ func (c *ValsDir) Rename(
 		common.Logger.Warnf("Source file not found: %s", oldName)
 		return syscall.ENOENT
 	}
-	valFile := inode.Operations().(*ValFile)
-
 	common.Logger.Infof("Updating val %s to new name %s and type %s", oldName, valName, valType)
-	valFile.ExtendedData.Name = valName
-	extVal, err := c.GetValOps().Update(ctx, valFile.BasicData.Id, valFile.ExtendedData)
+
+  // Load in the extended val if the val was lazy and it wasn't already loaded
+	valFile := inode.Operations().(*ValFile)
+	extVal, err := valFile.GetExtendedData(ctx)
+	if err != nil {
+		return fs.ENOATTR
+	}
+
+	// Update the object that we are passing through to update.
+	valFile.ExtendedData.SetName(valName)
+	valFile.ExtendedData.SetType(string(valType))
+	valFile.BasicData = valFile.ExtendedData.ToBasicVal()
+
+	extVal, err = c.GetValOps().Update(ctx, valFile.ExtendedData)
 	if err != nil {
 		common.Logger.Errorf("Error updating val %s: %v", oldName, err)
 		return syscall.EIO
