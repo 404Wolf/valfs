@@ -164,3 +164,10 @@ func (v *ValPackage) UpdateVal(contents string) error {
 	// Success
 	return nil
 }
+
+// LooksLikeMetadata returns true if the string appears to contain metadata
+// markers in the format /*--- ---*/
+func LooksLikeMetadata(contents string) bool {
+	metadataRe := regexp.MustCompile(`(?s)/\*---.*?---\*/`)
+	return metadataRe.MatchString(contents)
+}
