@@ -191,7 +191,7 @@ func (c *ValsDir) Rename(
 	}
 	common.Logger.Infof("Updating val %s to new name %s and type %s", oldName, valName, valType)
 
-  // Load in the extended val if the val was lazy and it wasn't already loaded
+	// Load in the extended val if the val was lazy and it wasn't already loaded
 	valFile := inode.Operations().(*ValFile)
 	extVal, err := valFile.GetExtendedData(ctx)
 	if err != nil {
