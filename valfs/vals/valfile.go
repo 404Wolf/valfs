@@ -178,8 +178,15 @@ func (c *ValFile) Write(
 		return 0, syscall.EIO
 	}
 	err = newValPackage.UpdateVal(string(data))
-	if err != nil {
-		common.Logger.Error("Bad input", "error", err)
+
+	// If off==0 then they might have "echo 'foo' > foo.H.tsx". We don't support
+	// creating val files by piping into the val file like this because we need
+	// to attach the metadata to the top of the file, but you CAN create files
+	// like this. This is useful for testing and automation. If a user writes to
+	// the file they will be writing at an offset other than 0, so this
+	// protection should be good enough for now.
+	if err != nil && off != 0 {
+		common.Logger.Error("Bad input ", err)
 		return 0, syscall.EINVAL
 	}
 	extVal := newValPackage.Val
