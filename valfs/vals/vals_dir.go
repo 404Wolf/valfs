@@ -7,7 +7,6 @@ import (
 
 	_ "embed"
 
-	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 
@@ -21,7 +20,6 @@ type ValsDir struct {
 	client   *common.Client
 	config   common.RefresherConfig
 	stopChan chan struct{}
-	valOps   ValOperations
 }
 
 var _ = (fs.NodeRenamer)((*ValsDir)(nil))
@@ -41,7 +39,6 @@ func NewValsDir(
 	common.Logger.Info("Initializing new ValsDir")
 	valsDir := &ValsDir{
 		client:   client,
-		valOps:   NewValDirOperations(client),
 		config:   common.RefresherConfig{LookupCap: 99},
 		stopChan: nil,
 	}
@@ -71,12 +68,6 @@ func (c *ValsDir) GetClient() *common.Client {
 	return c.client
 }
 
-// GetValOps returns the val operations (CRUD API abstractions) associated with
-// the ValsDir
-func (c *ValsDir) GetValOps() ValOperations {
-	return c.valOps
-}
-
 // GetClient returns whether the vals dir supports subdirectories
 func (c *ValsDir) SupportsDirs() bool {
 	return false
@@ -102,13 +93,13 @@ func (c *ValsDir) Unlink(ctx context.Context, name string) syscall.Errno {
 		return syscall.EINVAL
 	}
 
-	common.Logger.Infof("Attempting to delete val %s (ID: %s)", name, valFile.BasicData.Id)
-	err := c.GetValOps().Delete(ctx, valFile.BasicData.Id)
+	common.Logger.Infof("Attempting to delete val %s (ID: %s)", name, valFile.Val.GetId())
+	err := DeleteValDirVal(ctx, c.client, valFile.Val.GetId())
 	if err != nil {
 		common.Logger.Errorf("Error deleting val %s: %v", name, err)
 		return syscall.EIO
 	}
-	common.Logger.Infof("Successfully deleted val %s (ID: %s)", valFile.BasicData.Id)
+	common.Logger.Infof("Successfully deleted val %s (ID: %s)", valFile.Val.GetId())
 
 	return 0
 }
@@ -132,14 +123,14 @@ func (c *ValsDir) Create(
 	templateCode := GetTemplate(valType)
 	common.Logger.Infof("Creating val %s of type %s with privacy %s", valName, valType, DefaultPrivacy)
 
-	val, err := c.GetValOps().Create(ctx, valName, string(valType), string(templateCode), DefaultPrivacy)
+	val, err := CreateValDirVal(ctx, c.client, valType, string(templateCode), valName, DefaultPrivacy)
 	if err != nil {
 		common.Logger.Errorf("API error creating val %s: %v", name, err)
 		return nil, nil, 0, syscall.EIO
 	}
 
-	common.Logger.Info("Creating val file from extended val")
-	valFile, err := NewValFileFromExtendedVal(*val, c.client, c)
+	common.Logger.Info("Creating val file")
+	valFile, err := NewValFile(val, c.client, c)
 	if err != nil {
 		common.Logger.Errorf("Error creating val file for %s: %v", name, err)
 		return nil, nil, 0, syscall.EIO
@@ -192,33 +183,30 @@ func (c *ValsDir) Rename(
 	valFile := inode.Operations().(*ValFile)
 
 	common.Logger.Infof("Updating val %s to new name %s and type %s", oldName, valName, valType)
-	valFile.ExtendedData.Name = valName
-	extVal, err := c.GetValOps().Update(ctx, valFile.BasicData.Id, valFile.ExtendedData)
+	valFile.Val.SetName(valName)
+	valFile.Val.SetValType(string(valType))
+	err := valFile.Val.Update(ctx)
 	if err != nil {
 		common.Logger.Errorf("Error updating val %s: %v", oldName, err)
 		return syscall.EIO
 	}
 
-	valFile.ExtendedData = extVal
-	valFile.BasicData.Name = valName
-	valFile.BasicData.Type = string(valType)
 	common.Logger.Infof("Successfully renamed val from %s to %s", oldName, newName)
-
 	return syscall.F_OK
 }
 
 // Refresh implements the refresh operation for the vals container
 func (c *ValsDir) Refresh(ctx context.Context) error {
 	common.Logger.Info("Starting refresh operation")
-	newVals, err := c.getVals(ctx)
+	newVals, err := ListValDirVals(ctx, c.client)
 	if err != nil {
 		common.Logger.Error("Error fetching vals", err)
 		return err
 	}
 
-	newValsIdsToBasicVals := make(map[string]valgo.BasicVal)
+	newValsIdsToVals := make(map[string]Val)
 	for _, newVal := range newVals {
-		newValsIdsToBasicVals[newVal.GetId()] = newVal
+		newValsIdsToVals[newVal.GetId()] = newVal
 	}
 	common.Logger.Infof("Fetched %d vals for refresh", len(newVals))
 
@@ -227,21 +215,21 @@ func (c *ValsDir) Refresh(ctx context.Context) error {
 
 		if !exists {
 			common.Logger.Infof("Creating new val file for %s", newVal.GetId())
-			valFile, err := NewValFileFromBasicVal(ctx, newVal, c.client, c)
+			valFile, err := NewValFile(newVal, c.client, c)
 			if err != nil {
 				common.Logger.Errorf("Error creating val file for %s: %v", newVal.GetId(), err)
 				return err
 			}
-			filename := ConstructFilename(newVal.GetName(), ValType(newVal.GetType()))
+			filename := ConstructFilename(newVal.GetName(), newVal.GetValType())
 			c.NewPersistentInode(ctx, valFile, fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
 			c.AddChild(filename, &valFile.Inode, true)
 			previousValIds[newVal.GetId()] = valFile
 			common.Logger.Infof("Added val %s, found fresh on valtown", newVal.GetId())
 		}
 
-		if exists && newVal.GetVersion() > prevValFile.BasicData.GetVersion() {
+		if exists && newVal.GetVersion() > prevValFile.Val.GetVersion() {
 			common.Logger.Infof("Updating existing val %s to version %d", newVal.GetId(), newVal.GetVersion())
-			prevValFile.BasicData = newVal
+			prevValFile.Val = newVal
 			prevValFile.ModifiedNow()
 			prevValFile.EmbeddedInode().Root().NotifyContent(0, 0)
 			common.Logger.Infof("Updated val %s, found newer on valtown", newVal.GetId())
@@ -249,44 +237,16 @@ func (c *ValsDir) Refresh(ctx context.Context) error {
 	}
 
 	for _, oldVal := range previousValIds {
-		if _, exists := newValsIdsToBasicVals[oldVal.BasicData.GetId()]; !exists {
-			filename := ConstructFilename(oldVal.BasicData.GetName(), ValType(oldVal.BasicData.GetType()))
+		if _, exists := newValsIdsToVals[oldVal.Val.GetId()]; !exists {
+			filename := ConstructFilename(oldVal.Val.GetName(), oldVal.Val.GetValType())
 			common.Logger.Infof("Removing val %s as it's no longer found on valtown", filename)
 			c.RmChild(filename)
-			delete(previousValIds, oldVal.BasicData.GetId())
-			common.Logger.Infof("Removed val %s no longer found on valtown", oldVal.BasicData.GetId())
+			delete(previousValIds, oldVal.Val.GetId())
+			common.Logger.Infof("Removed val %s no longer found on valtown", oldVal.Val.GetId())
 		}
 	}
 
 	return nil
-}
-
-// getVals retrieves a list of all the vals belonging to the authed user
-func (c *ValsDir) getVals(ctx context.Context) ([]valgo.BasicVal, error) {
-	common.Logger.Info("Fetching all of my vals")
-
-	offset := int32(0)
-	allVals := []valgo.BasicVal{}
-
-	for {
-		common.Logger.Infof("Fetching vals batch with offset %d", offset)
-		vals, err := c.GetValOps().List(ctx, offset, c.config.LookupCap)
-		if err != nil {
-			common.Logger.Errorf("Error fetching vals batch: %v", err)
-			return nil, err
-		}
-
-		allVals = append(allVals, vals...)
-
-		if len(vals) < int(c.config.LookupCap) {
-			break
-		}
-
-		offset += c.config.LookupCap
-	}
-
-	common.Logger.Infof("Fetched all of my vals. Found %d vals", len(allVals))
-	return allVals, nil
 }
 
 // StartAutoRefresh begins automatic refreshing of the vals container

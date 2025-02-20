@@ -7,13 +7,12 @@ import (
 	"strings"
 
 	common "github.com/404wolf/valfs/common"
-	"github.com/404wolf/valgo"
 	"github.com/goccy/go-yaml"
 	yamlcomment "github.com/zijiren233/yaml-comment"
 )
 
 type ValPackage struct {
-	Val    *valgo.ExtendedVal
+	Val    Val
 	client *common.Client
 }
 
@@ -76,39 +75,36 @@ func DeconstructVal(contents string) (
 }
 
 // Create a new val package from a val
-func NewValPackage(client *common.Client, val *valgo.ExtendedVal) ValPackage {
+func NewValPackage(client *common.Client, val Val) ValPackage {
 	return ValPackage{Val: val, client: client}
 }
 
 // Get just the metadata text
 func (v *ValPackage) GetFrontmatterText() (string, error) {
-	link := v.Val.GetLinks()
+	moduleLink := v.Val.GetModuleLink()
 
 	if v.client.Config.StaticMeta {
-		if strings.Contains(link.Module, "?") {
-			link.Module = strings.Split(link.Module, "?")[0]
+		if strings.Contains(moduleLink, "?") {
+			moduleLink = strings.Split(moduleLink, "?")[0]
 		}
 	}
 
+	endpointLink := v.Val.GetEndpointLink()
 	frontmatterValLinks := ValFrontmatterLinks{
-		Website:  v.Val.Url,
-		Module:   link.Module,
-		Endpoint: link.Endpoint,
+		Website:  v.Val.GetEndpointLink(),
+		Module:   moduleLink,
+		Endpoint: &endpointLink,
 	}
 
-	if v.Val.Type == "email" {
-		if v.Val.GetAuthor().Username.Get() == nil {
-			return "", errors.New("Author username is nil")
-		}
-
-		emailAddress := fmt.Sprintf("%s.%s@valtown.email", *v.Val.GetAuthor().Username.Get(), v.Val.Name)
+	if v.Val.GetValType() == "email" {
+		emailAddress := fmt.Sprintf("%s.%s@valtown.email", v.Val.GetAuthorName(), v.Val.GetName())
 		frontmatterValLinks.Email = &emailAddress
 	}
 
 	frontmatterVal := ValFrontmatter{
-		Id:      v.Val.Id,
-		Version: v.Val.Version,
-		Privacy: v.Val.Privacy,
+		Id:      v.Val.GetId(),
+		Version: v.Val.GetVersion(),
+		Privacy: v.Val.GetPrivacy(),
 		Links:   frontmatterValLinks,
 		Readme:  v.Val.GetReadme(),
 	}
@@ -138,6 +134,7 @@ func (v *ValPackage) ToText() (*string, error) {
 	return &combined, nil
 }
 
+// Get the length of the code segement of the val package.
 func (v *ValPackage) Len() (int, error) {
 	contents, err := v.ToText()
 	if err != nil {
@@ -157,17 +154,10 @@ func (v *ValPackage) UpdateVal(contents string) error {
 	}
 
 	// Update the underlying val
-	v.Val.Privacy = frontmatter.Privacy
+	v.Val.SetPrivacy(frontmatter.Privacy)
 	v.Val.SetReadme(frontmatter.Readme)
 	v.Val.SetCode(*code)
 
 	// Success
 	return nil
-}
-
-// LooksLikeMetadata returns true if the string appears to contain metadata
-// markers in the format /*--- ---*/
-func LooksLikeMetadata(contents string) bool {
-	metadataRe := regexp.MustCompile(`(?s)/\*---.*?---\*/`)
-	return metadataRe.MatchString(contents)
 }
