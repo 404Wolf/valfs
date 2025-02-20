@@ -12,8 +12,8 @@ import (
 	"github.com/hanwen/go-fuse/v2/fuse"
 
 	common "github.com/404wolf/valfs/common"
-	editor "github.com/404wolf/valfs/valfs/editor"
 	blobs "github.com/404wolf/valfs/valfs/blobs"
+	editor "github.com/404wolf/valfs/valfs/editor"
 	vals "github.com/404wolf/valfs/valfs/vals"
 )
 

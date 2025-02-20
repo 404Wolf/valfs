@@ -180,12 +180,12 @@ func (c *ValFile) Write(
 	newValPackage.UpdateVal(string(data))
 	extVal := newValPackage.Val
 
-  // Update metadata (which we harvest from the top of the file) seperately, we
-  // can't change the code and metadata at the same time because of a val town
-  // api bug. 
-  c.parent.GetValOps().Update(ctx, prevExtVal.GetId(), extVal) 
+	// Update metadata (which we harvest from the top of the file) seperately, we
+	// can't change the code and metadata at the same time because of a val town
+	// api bug.
+	c.parent.GetValOps().Update(ctx, prevExtVal.GetId(), extVal)
 
-  //  Update the val's code in valtown
+	//  Update the val's code in valtown
 	err = c.parent.GetValOps().UpdateCode(ctx, prevExtVal.GetId(), newValPackage.Val.GetCode())
 	if err != nil {
 		common.Logger.Error("Error updating val code", "error", err)

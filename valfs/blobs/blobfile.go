@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"syscall"
-	"time"
 
 	"github.com/404wolf/valfs/common"
 	"github.com/404wolf/valgo"
@@ -26,13 +25,12 @@ const BlobTempDirPerms = 0o755
 type BlobFile struct {
 	fs.Inode
 
-	Meta    valgo.BlobListingItem
-	Upload  *BlobUpload
-	blobs *BlobsDir
+	Meta   valgo.BlobListingItem
+	Upload *BlobUpload
+	blobs  *BlobsDir
 }
 
 var _ = (fs.NodeOpener)((*BlobFile)(nil))
-var _ = (fs.NodeWriter)((*BlobFile)(nil))
 var _ = (fs.NodeSetattrer)((*BlobFile)(nil))
 var _ = (fs.NodeGetattrer)((*BlobFile)(nil))
 var _ = (fs.NodeReleaser)((*BlobFile)(nil))
@@ -58,7 +56,7 @@ func NewBlobFile(
 ) *BlobFile {
 	common.Logger.Info("Creating new BlobFile with key %s", data.Key)
 	blobFile := &BlobFile{
-		Meta:    data,
+		Meta:  data,
 		blobs: blobsDir,
 	}
 	blobFile.Upload = &BlobUpload{BlobFile: blobFile}
@@ -196,59 +194,6 @@ func (f *BlobFile) Setattr(
 	common.Logger.Info("Setting attributes for blob %s", f.Meta.Key)
 	out.Mode = BlobFileFlags
 	return syscall.F_OK
-}
-
-// Write handles writing data to the file and managing uploads
-func (f *BlobFile) Write(
-	ctx context.Context,
-	fh fs.FileHandle,
-	data []byte,
-	off int64,
-) (uint32, syscall.Errno) {
-	bfh := fh.(*BlobFileHandle)
-	common.Logger.Info("Starting write operation of %d bytes at offset %d for %s", len(data), off, f.Meta.Key)
-
-	// Get current file size
-	fileInfo, err := bfh.file.Stat()
-	if err != nil {
-		common.Logger.Error("Failed to stat file for %s: %v", err, f.Meta.Key)
-		return 0, syscall.EIO
-	}
-
-	// For append operations, ensure we're writing at the actual end of file
-	if off >= fileInfo.Size() {
-		off = fileInfo.Size()
-	}
-
-	// Write to temporary file
-	wrote, err := bfh.file.WriteAt(data, off)
-	if err != nil {
-		common.Logger.Error("Failed to write to temporary file for %s: %v", err, f.Meta.Key)
-		return 0, syscall.EIO
-	}
-	common.Logger.Info("Wrote %d bytes at offset %d to temporary file for %s", wrote, off, f.Meta.Key)
-
-	// Write to upload
-	if err := f.Upload.Write(off, data, bfh.file); err != nil {
-		common.Logger.Error("Failed to write to upload for %s: %v", err, f.Meta.Key)
-		return 0, syscall.EIO
-	}
-
-	// Update metadata
-	fileInfo, err = bfh.file.Stat()
-	if err != nil {
-		common.Logger.Error("Failed to stat temporary file for %s: %v", err, f.Meta.Key)
-		return 0, syscall.EIO
-	}
-
-	oldSize := f.Meta.Size
-	newSize := fileInfo.Size()
-	f.Meta.SetSize(int32(newSize))
-	f.Meta.SetLastModified(time.Now())
-
-	common.Logger.Info("Successfully wrote %d bytes to %s (size changed from %d to %d bytes)",
-		wrote, f.Meta.Key, oldSize, newSize)
-	return uint32(wrote), syscall.F_OK
 }
 
 // Release handles cleanup when the file is closed
