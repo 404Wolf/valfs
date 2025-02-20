@@ -46,9 +46,10 @@ func (v *ValDirOperations) Read(ctx context.Context, valId string) (*valgo.Exten
 
 func (v *ValDirOperations) Update(
 	ctx context.Context,
-	valId string,
 	extVal *valgo.ExtendedVal,
 ) (*valgo.ExtendedVal, error) {
+	valId := extVal.Id
+
 	updateReq := valgo.NewValsUpdateRequest()
 	updateReq.SetName(extVal.Name)
 	updateReq.SetType(extVal.Type)

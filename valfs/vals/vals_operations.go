@@ -15,7 +15,7 @@ type ValOperations interface {
 	Read(ctx context.Context, valId string) (*valgo.ExtendedVal, error)
 
 	// Update updates an existing val's properties
-	Update(ctx context.Context, valId string, extVal *valgo.ExtendedVal) (*valgo.ExtendedVal, error)
+	Update(ctx context.Context, extVal *valgo.ExtendedVal) (*valgo.ExtendedVal, error)
 
 	// UpdateCode updates a val's code content
 	UpdateCode(ctx context.Context, valId string, code string) error
