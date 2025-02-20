@@ -172,6 +172,7 @@ functionality
 - ValFiles should only have one val data reference, not two, or it should be
   better documented how the lazy loading works.
 - There's shebangs at the top of files. But they don't do anything yet.
+- Do not allow writes if they break the metadata portion of the code
 
 ## ValFile Operations
 
