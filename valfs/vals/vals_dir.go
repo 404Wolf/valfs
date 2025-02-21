@@ -211,7 +211,7 @@ func (c *ValsDir) Refresh(ctx context.Context) error {
 	common.Logger.Infof("Fetched %d vals for refresh", len(newVals))
 
 	for _, newVal := range newVals {
-		prevValFile, exists := previousValIds[newVal.GetId()]
+		prevValFile, exists := previousBranchIds[newVal.GetId()]
 
 		if !exists {
 			common.Logger.Infof("Creating new val file for %s", newVal.GetId())
@@ -223,7 +223,7 @@ func (c *ValsDir) Refresh(ctx context.Context) error {
 			filename := ConstructFilename(newVal.GetName(), newVal.GetValType())
 			c.NewPersistentInode(ctx, valFile, fs.StableAttr{Mode: syscall.S_IFREG, Ino: 0})
 			c.AddChild(filename, &valFile.Inode, true)
-			previousValIds[newVal.GetId()] = valFile
+			previousBranchIds[newVal.GetId()] = valFile
 			common.Logger.Infof("Added val %s, found fresh on valtown", newVal.GetId())
 		}
 
@@ -236,12 +236,12 @@ func (c *ValsDir) Refresh(ctx context.Context) error {
 		}
 	}
 
-	for _, oldVal := range previousValIds {
+	for _, oldVal := range previousBranchIds {
 		if _, exists := newValsIdsToVals[oldVal.Val.GetId()]; !exists {
 			filename := ConstructFilename(oldVal.Val.GetName(), oldVal.Val.GetValType())
 			common.Logger.Infof("Removing val %s as it's no longer found on valtown", filename)
 			c.RmChild(filename)
-			delete(previousValIds, oldVal.Val.GetId())
+			delete(previousBranchIds, oldVal.Val.GetId())
 			common.Logger.Infof("Removed val %s no longer found on valtown", oldVal.Val.GetId())
 		}
 	}

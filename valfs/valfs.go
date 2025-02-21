@@ -41,8 +41,8 @@ func (c *ValFS) AddValsDir(ctx context.Context) {
 // placed in this folder, where each one gets a folder
 func (c *ValFS) AddProjectsDir(ctx context.Context) {
 	common.Logger.Info("Adding vals directory to valfs")
-	valsDir := vals.NewProjectsDir(&c.Inode, c.client, ctx)
-	c.AddChild("projects", valsDir.GetInode(), true)
+	projectsDir := vals.NewProjectsDir(&c.Inode, c.client, ctx)
+	c.AddChild("projects", projectsDir.GetInode(), true)
 }
 
 // Add the deno.json file which provides the user context about how to run and
