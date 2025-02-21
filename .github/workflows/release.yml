@@ -21,8 +21,11 @@ jobs:
       - name: Build Linux binary
         run: GOOS=linux GOARCH=amd64 go build -o valfs-linux-amd64
 
-      - name: Build Mac binary
-        run: GOOS=darwin GOARCH=amd64 go build -o valfs-darwin-amd64
+      # Build both Mac binaries
+      - name: Build Mac binaries
+        run: |
+          GOOS=darwin GOARCH=amd64 go build -o valfs-darwin-amd64
+          GOOS=darwin GOARCH=arm64 go build -o valfs-darwin-arm64
 
       - name: Create Release
         id: create_release
