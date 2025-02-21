@@ -29,10 +29,20 @@ func NewValFS(client *common.Client) *ValFS {
 	return &ValFS{client: client}
 }
 
+// Add a directory that is the root for all your vals. All vals will be loosly
+// placed in this folder.
 func (c *ValFS) AddValsDir(ctx context.Context) {
 	common.Logger.Info("Adding vals directory to valfs")
 	valsDir := vals.NewValsDir(&c.Inode, c.client, ctx)
 	c.AddChild("vals", valsDir.GetInode(), true)
+}
+
+// Add a directory that is the root for all your val town projects. All val town projects will be
+// placed in this folder, where each one gets a folder
+func (c *ValFS) AddProjectsDir(ctx context.Context) {
+	common.Logger.Info("Adding vals directory to valfs")
+	valsDir := vals.NewProjectsDir(&c.Inode, c.client, ctx)
+	c.AddChild("projects", valsDir.GetInode(), true)
 }
 
 // Add the deno.json file which provides the user context about how to run and
@@ -56,6 +66,11 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 			// Add the folder with all the vals
 			if c.client.Config.EnableValsDirectory {
 				c.AddValsDir(ctx)
+			}
+
+			// Add the folder with all the projects
+			if c.client.Config.EnableProjectsDirectory {
+				c.AddProjectsDir(ctx)
 			}
 
 			// Add the deno.json file

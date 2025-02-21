@@ -197,7 +197,7 @@ func (c *ValsDir) Rename(
 
 // Refresh implements the refresh operation for the vals container
 func (c *ValsDir) Refresh(ctx context.Context) error {
-	common.Logger.Info("Starting refresh operation")
+	common.Logger.Info("Starting refresh operation for vals directory")
 	newVals, err := ListValDirVals(ctx, c.client.APIClient)
 	if err != nil {
 		common.Logger.Error("Error fetching vals", err)
