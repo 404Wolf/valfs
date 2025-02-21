@@ -89,37 +89,29 @@ func deconstructVal(contents string) (
 	meta *valPackageFrontmatter,
 	err error,
 ) {
-	// Extract the frontmatter
+	// Regex to find the frontmatter block
 	frontmatterRe := regexp.MustCompile(`(?s)/?---\n(.*?)\n---/?`)
-	frontmatterMatches := frontmatterRe.FindStringSubmatch(contents)
-	if len(frontmatterMatches) == 0 {
+	frontmatterIndices := frontmatterRe.FindStringIndex(contents)
+	if frontmatterIndices == nil {
 		return nil, nil, errors.New("No frontmatter found")
 	}
-	frontmatterMatch := frontmatterMatches[0]
 
-	// Extract the code
-	if len(contents) < 4 {
-		return nil, nil, errors.New("No code found")
-	}
-	frontmatterFindIndex := frontmatterRe.FindStringIndex(contents)
-	if frontmatterFindIndex == nil {
-		return nil, nil, errors.New("Invalid frontmatter format")
-	}
-	frontmatterEndIndex := frontmatterFindIndex[1]
+	// Extract the frontmatter text from the matched indices
+	frontmatterMatch := contents[frontmatterIndices[0]:frontmatterIndices[1]]
 
-	var offset int
-	if contents[frontmatterEndIndex+3] == '\n' {
-		offset = 4
-	} else {
-		offset = 3
-	}
-	codeSection := contents[frontmatterEndIndex+offset : len(contents)-1]
-
-	// Deserialize the frontmatter
+	// Deserialize frontmatter into valPackageFrontmatter struct
 	meta = &valPackageFrontmatter{}
 	err = yaml.Unmarshal([]byte(frontmatterMatch), meta)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Everything after the frontmatter is considered code
+	codeSection := strings.TrimSpace(contents[frontmatterIndices[1]:])
+
+	// If code is empty or contains only a problematic value like "*/", default to " "
+	if codeSection == "" || codeSection == "*/" {
+		codeSection = " "
 	}
 
 	return &codeSection, meta, nil

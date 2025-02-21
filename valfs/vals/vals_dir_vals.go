@@ -113,19 +113,33 @@ func (v *ValDirVal) Load(ctx context.Context) error {
 
 // loadExtendedValProperties loads extended properties from a Val object
 func (v *ValDirVal) loadExtendedValProperties(val *valgo.ExtendedVal) {
-	// Set additional fields
+	// Set basic fields
+	v.name = val.Name
+	v.valId = val.Id
+	v.valType = val.Type
+	v.version = val.Version
+	v.privacy = val.Privacy
+	v.public = val.Public
 	v.createdAt = val.CreatedAt
 	v.url = val.Url
 	v.likeCount = val.LikeCount
 	v.referenceCount = val.ReferenceCount
 
+	// Set code, ensuring it's handled properly as NullableString
+	if val.Code.IsSet() {
+		v.code = val.GetCode()
+	}
+
+	// Set readme, ensuring it's handled properly as NullableString
+	if val.Readme.IsSet() {
+		v.readme = val.GetReadme()
+	}
+
 	// Set links
 	links := val.Links
-
 	if links.Endpoint != nil {
 		v.endpointLink = *links.Endpoint
 	}
-
 	v.moduleLink = links.Module
 	v.versionsLink = links.Versions
 

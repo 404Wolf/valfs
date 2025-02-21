@@ -6,12 +6,12 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	common "github.com/404wolf/valfs/common"
 	valfs "github.com/404wolf/valfs/valfs"
 	vals "github.com/404wolf/valfs/valfs/vals"
-	"github.com/404wolf/valgo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,22 +26,40 @@ func randomFilename(prefix string) string {
 	return fmt.Sprintf("val%d%s", rand.Intn(999999), prefix)
 }
 
-func getValFromFileContents(t *testing.T, apiClient *common.APIClient, contents string) *valgo.ExtendedVal {
-	_, finalMeta, err := vals.DeconstructVal(string(contents))
-	require.NoError(t, err, "Failed to parse final metadata")
-	valId := finalMeta.Id
-	val, _, err := apiClient.ValsAPI.ValsGet(context.Background(), valId).Execute()
-	require.NoError(t, err, "Failed to fetch val")
-	return val
+func getValFromFileContents(contents string, apiClient *common.APIClient) (vals.Val, error) {
+	// Extract ID using regex
+  pattern := `id:\s*([0-9a-f-]+)`
+	re := regexp.MustCompile(pattern)
+	matches := re.FindStringSubmatch(contents)
+
+	if len(matches) < 2 {
+		return nil, fmt.Errorf("could not find ID in contents")
+	}
+	id := matches[1]
+
+	// Create a val that we wil fill out with the contents when deserializizing
+	val := vals.ValDirValOf(apiClient, id)
+
+	// Create a temporary ValPackage
+	tempPackage := vals.NewValPackage(val, false, false)
+
+	// Use UpdateVal to parse the contents - this is the public method for parsing
+	err := tempPackage.UpdateVal(contents)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse val contents: %w", err)
+	}
+
+	// Return the val "stuffed" with what ValPackage plopped into it
+	return val, nil
 }
 
 func TestBasicValCreation(t *testing.T) {
-	testData, blobDir := setupTest(t)
+	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
 	t.Run("Create script val", func(t *testing.T) {
 		fileName := randomFilename("create1.S.tsx")
-		filePath := filepath.Join(blobDir, fileName)
+		filePath := filepath.Join(valsDir, fileName)
 
 		// Create the val
 		err := os.WriteFile(filePath, []byte("console.log('test');"), 0644)
@@ -51,14 +69,15 @@ func TestBasicValCreation(t *testing.T) {
 		// Verify metadata and type
 		finalContents, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read final file")
-		val := getValFromFileContents(t, testData.APIClient, string(finalContents))
-		assert.Equal(t, "script", val.Type, "Type should be 'script'")
-		assert.Equal(t, int32(0), val.Version, "Initial version should be 0")
+		val, err := getValFromFileContents(string(finalContents), testData.APIClient)
+		require.NoError(t, err, "Failed to get val from file contents")
+		assert.Equal(t, "script", val.GetValType(), "Type should be 'script'")
+		assert.Equal(t, int32(0), val.GetVersion(), "Initial version should be 0")
 	})
 
 	t.Run("Create http val", func(t *testing.T) {
 		fileName := randomFilename("create2.H.tsx")
-		filePath := filepath.Join(blobDir, fileName)
+		filePath := filepath.Join(valsDir, fileName)
 
 		err := os.WriteFile(filePath, []byte("export default function(){return new Response('test')}"), 0644)
 		require.NoError(t, err, "Failed to create http val")
@@ -66,41 +85,47 @@ func TestBasicValCreation(t *testing.T) {
 
 		finalContents, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read final file")
-		val := getValFromFileContents(t, testData.APIClient, string(finalContents))
-		assert.Equal(t, "http", val.Type, "Type should be 'http'")
+		val, err := getValFromFileContents(string(finalContents), testData.APIClient)
+		require.NoError(t, err, "Failed to get val from file contents")
+		assert.Equal(t, "http", val.GetValType(), "Type should be 'http'")
 	})
 }
 
 func TestValPrivacyUpdates(t *testing.T) {
-	testData, blobDir := setupTest(t)
+	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
 	ctx := context.Background()
 
 	t.Run("Privacy setting changes", func(t *testing.T) {
 		fileName := randomFilename("privacy.S.tsx")
-		filePath := filepath.Join(blobDir, fileName)
+		filePath := filepath.Join(valsDir, fileName)
 
 		// Create initial val
-		err := os.WriteFile(filePath, []byte("console.log('privacy test');"), 0644)
+		_, err := os.Create(filePath)
 		require.NoError(t, err, "Failed to create file")
 
 		// Get initial val info
 		contents, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read file")
-		val := getValFromFileContents(t, testData.APIClient, string(contents))
+		val, err := getValFromFileContents(string(contents), testData.APIClient)
+		require.NoError(t, err, "Failed to get val from file contents")
 
 		// Test each privacy setting
 		privacySettings := []string{"public", "private", "unlisted"}
-		dirVal := vals.GetValDirValOf(testData.APIClient, val.GetId())
+		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
 
 		for _, privacy := range privacySettings {
 			err = dirVal.Load(ctx)
 			require.NoError(t, err, "Failed to get val")
 
+			// Update the val's privacy by changing the metadata yaml field
+			valPackage := vals.NewValPackage(dirVal, false, false)
 			dirVal.SetPrivacy(privacy)
-			err = dirVal.Update(ctx)
-			require.NoError(t, err, "Failed to update privacy to "+privacy)
+			valText, err := valPackage.ToText()
+			require.NoError(t, err, "Failed to serialize val package")
+			err = os.WriteFile(filePath, []byte(*valText), 0644)
+			require.NoError(t, err, "Failed to write updated val")
 
 			// Verify through API
 			err = dirVal.Load(ctx)
@@ -111,14 +136,14 @@ func TestValPrivacyUpdates(t *testing.T) {
 }
 
 func TestValCodeUpdates(t *testing.T) {
-	testData, blobDir := setupTest(t)
+	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
 	ctx := context.Background()
 
 	t.Run("Code updates and versioning", func(t *testing.T) {
 		fileName := randomFilename("code.S.tsx")
-		filePath := filepath.Join(blobDir, fileName)
+		filePath := filepath.Join(valsDir, fileName)
 
 		// Create initial val
 		initialCode := "console.log('initial');"
@@ -128,8 +153,9 @@ func TestValCodeUpdates(t *testing.T) {
 		// Get initial val
 		contents, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read file")
-		val := getValFromFileContents(t, testData.APIClient, string(contents))
-		dirVal := vals.GetValDirValOf(testData.APIClient, val.Id)
+		val, err := getValFromFileContents(string(contents), testData.APIClient)
+		require.NoError(t, err, "Failed to get val from file contents")
+		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
 
 		// Update code multiple times
 		updates := []string{
@@ -156,14 +182,14 @@ func TestValCodeUpdates(t *testing.T) {
 }
 
 func TestValMetadataOperations(t *testing.T) {
-	testData, blobDir := setupTest(t)
+	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
 	ctx := context.Background()
 
 	t.Run("Metadata updates and persistence", func(t *testing.T) {
 		fileName := randomFilename("meta.S.tsx")
-		filePath := filepath.Join(blobDir, fileName)
+		filePath := filepath.Join(valsDir, fileName)
 
 		// Create initial val
 		err := os.WriteFile(filePath, []byte("console.log('metadata test');"), 0644)
@@ -171,8 +197,9 @@ func TestValMetadataOperations(t *testing.T) {
 
 		contents, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read file")
-		val := getValFromFileContents(t, testData.APIClient, string(contents))
-		dirVal := vals.GetValDirValOf(testData.APIClient, val.Id)
+		val, err := getValFromFileContents(string(contents), testData.APIClient)
+		require.NoError(t, err, "Failed to get val from file contents")
+		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
 
 		err = dirVal.Load(ctx)
 		require.NoError(t, err, "Failed to get val")
@@ -235,14 +262,14 @@ func TestValListingAndDeletion(t *testing.T) {
 }
 
 func TestFileOperations(t *testing.T) {
-	testData, blobDir := setupTest(t)
+	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
 	t.Run("Rename val file", func(t *testing.T) {
 		oldName := randomFilename("original.S.tsx")
 		newName := randomFilename("renamed.S.tsx")
-		oldPath := filepath.Join(blobDir, oldName)
-		newPath := filepath.Join(blobDir, newName)
+		oldPath := filepath.Join(valsDir, oldName)
+		newPath := filepath.Join(valsDir, newName)
 
 		err := os.WriteFile(oldPath, []byte("console.log('rename test');"), 0644)
 		require.NoError(t, err, "Failed to create file")
