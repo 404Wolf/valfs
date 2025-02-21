@@ -38,7 +38,11 @@ type valPackageFrontmatter struct {
 
 // NewValPackage creates a new val package from a val
 func NewValPackage(val Val, staticMeta bool, executableVals bool) ValPackage {
-	return ValPackage{Val: val}
+	return ValPackage{
+		Val:            val,
+		StaticMeta:     staticMeta,
+		ExecutableVals: executableVals,
+	}
 }
 
 // ToText converts the val to a package with metadata and code
@@ -89,35 +93,36 @@ func deconstructVal(contents string) (
 	meta *valPackageFrontmatter,
 	err error,
 ) {
-	// Regex to find the frontmatter block
-	frontmatterRe := regexp.MustCompile(`(?s)/?---\n(.*?)\n---/?`)
-	frontmatterIndices := frontmatterRe.FindStringIndex(contents)
-	if frontmatterIndices == nil {
+	// Match the entire frontmatter block including comment markers
+	frontmatterRe := regexp.MustCompile(`(?s)/\*---\n(.*?)\n---\*/`)
+	matches := frontmatterRe.FindStringSubmatch(contents)
+	if len(matches) < 2 {
 		return nil, nil, errors.New("No frontmatter found")
 	}
 
-	// Extract the frontmatter text from the matched indices
-	frontmatterMatch := contents[frontmatterIndices[0]:frontmatterIndices[1]]
+	// Extract just the YAML content (without comment markers and --- delimiters)
+	frontmatterContent := matches[1]
 
-	// Deserialize frontmatter into valPackageFrontmatter struct
+	// Parse the frontmatter YAML
 	meta = &valPackageFrontmatter{}
-	err = yaml.Unmarshal([]byte(frontmatterMatch), meta)
+	err = yaml.Unmarshal([]byte(frontmatterContent), meta)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to parse frontmatter: %w", err)
 	}
 
-	// Everything after the frontmatter is considered code
-	codeSection := strings.TrimSpace(contents[frontmatterIndices[1]:])
+	// Find the end of the frontmatter block
+	fullMatch := matches[0]
+	codeSection := strings.TrimSpace(contents[len(fullMatch):])
 
-	// If code is empty or contains only a problematic value like "*/", default to " "
-	if codeSection == "" || codeSection == "*/" {
+	// Handle empty code case
+	if codeSection == "" {
 		codeSection = " "
 	}
 
 	return &codeSection, meta, nil
 }
 
-// getFrontmatterText returns just the metadata text
+// getFrontmatterText returns the metadata formatted as YAML with comment markers
 func (v *ValPackage) getFrontmatterText() (string, error) {
 	moduleLink := v.Val.GetModuleLink()
 

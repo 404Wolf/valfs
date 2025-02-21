@@ -28,7 +28,7 @@ func randomFilename(prefix string) string {
 
 func getValFromFileContents(contents string, apiClient *common.APIClient) (vals.Val, error) {
 	// Extract ID using regex
-  pattern := `id:\s*([0-9a-f-]+)`
+	pattern := `id:\s*([0-9a-f-]+)`
 	re := regexp.MustCompile(pattern)
 	matches := re.FindStringSubmatch(contents)
 
@@ -145,12 +145,11 @@ func TestValCodeUpdates(t *testing.T) {
 		fileName := randomFilename("code.S.tsx")
 		filePath := filepath.Join(valsDir, fileName)
 
-		// Create initial val
-		initialCode := "console.log('initial');"
-		err := os.WriteFile(filePath, []byte(initialCode), 0644)
+		// Create empty file first
+		_, err := os.Create(filePath)
 		require.NoError(t, err, "Failed to create file")
 
-		// Get initial val
+		// Get initial val info
 		contents, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read file")
 		val, err := getValFromFileContents(string(contents), testData.APIClient)
@@ -168,11 +167,15 @@ func TestValCodeUpdates(t *testing.T) {
 			err = dirVal.Load(ctx)
 			require.NoError(t, err, "Failed to get val")
 
+			// Update through ValPackage
+			valPackage := vals.NewValPackage(dirVal, false, false)
 			dirVal.SetCode(newCode)
-			err = dirVal.Update(ctx)
-			require.NoError(t, err, "Failed to update code")
+			valText, err := valPackage.ToText()
+			require.NoError(t, err, "Failed to serialize val package")
+			err = os.WriteFile(filePath, []byte(*valText), 0644)
+			require.NoError(t, err, "Failed to write updated val")
 
-			// Verify version increment and code update
+			// Verify through API
 			err = dirVal.Load(ctx)
 			require.NoError(t, err, "Failed to get updated val")
 			assert.Equal(t, int32(i+1), dirVal.GetVersion(), fmt.Sprintf("Version should be %d", i+1))
