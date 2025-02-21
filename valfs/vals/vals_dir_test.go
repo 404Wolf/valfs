@@ -18,6 +18,7 @@ import (
 
 const dirName = "vals"
 
+// Helper functions
 func setupTest(t *testing.T) (*valfs.TestData, string) {
 	return valfs.SetupTest(t, dirName)
 }
@@ -27,7 +28,6 @@ func randomFilename(prefix string) string {
 }
 
 func getValFromFileContents(contents string, apiClient *common.APIClient) (vals.Val, error) {
-	// Extract ID using regex
 	pattern := `id:\s*([0-9a-f-]+)`
 	re := regexp.MustCompile(pattern)
 	matches := re.FindStringSubmatch(contents)
@@ -37,23 +37,19 @@ func getValFromFileContents(contents string, apiClient *common.APIClient) (vals.
 	}
 	id := matches[1]
 
-	// Create a val that we wil fill out with the contents when deserializizing
 	val := vals.ValDirValOf(apiClient, id)
-
-	// Create a temporary ValPackage
 	tempPackage := vals.NewValPackage(val, false, false)
 
-	// Use UpdateVal to parse the contents - this is the public method for parsing
 	err := tempPackage.UpdateVal(contents)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse val contents: %w", err)
 	}
 
-	// Return the val "stuffed" with what ValPackage plopped into it
 	return val, nil
 }
 
-func TestBasicValCreation(t *testing.T) {
+// TestValCreationSuite tests the creation of different types of vals
+func TestValCreationSuite(t *testing.T) {
 	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
@@ -63,18 +59,15 @@ func TestBasicValCreation(t *testing.T) {
 		fileName := randomFilename("create1.S.tsx")
 		filePath := filepath.Join(valsDir, fileName)
 
-		// Create empty file first
 		_, err := os.Create(filePath)
 		require.NoError(t, err, "Failed to create file")
 
-		// Get initial val info
 		contents, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read file")
 		val, err := getValFromFileContents(string(contents), testData.APIClient)
 		require.NoError(t, err, "Failed to get val from file contents")
 		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
 
-		// Update val with code
 		valPackage := vals.NewValPackage(dirVal, false, false)
 		dirVal.SetCode("console.log('test');")
 		valText, err := valPackage.ToText()
@@ -83,7 +76,6 @@ func TestBasicValCreation(t *testing.T) {
 		require.NoError(t, err, "Failed to write val")
 		assert.FileExists(t, filePath, "File should exist")
 
-		// Verify through API
 		err = dirVal.Load(ctx)
 		require.NoError(t, err, "Failed to get val from API")
 		assert.Equal(t, vals.Script, dirVal.GetValType(), "Type should be 'script'")
@@ -95,18 +87,15 @@ func TestBasicValCreation(t *testing.T) {
 		fileName := randomFilename("create2.H.tsx")
 		filePath := filepath.Join(valsDir, fileName)
 
-		// Create empty file first
 		_, err := os.Create(filePath)
 		require.NoError(t, err, "Failed to create file")
 
-		// Get initial val info
 		contents, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read file")
 		val, err := getValFromFileContents(string(contents), testData.APIClient)
 		require.NoError(t, err, "Failed to get val from file contents")
 		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
 
-		// Update val with code
 		valPackage := vals.NewValPackage(dirVal, false, false)
 		dirVal.SetCode("export default function(){return new Response('test')}")
 		valText, err := valPackage.ToText()
@@ -115,7 +104,6 @@ func TestBasicValCreation(t *testing.T) {
 		require.NoError(t, err, "Failed to write val")
 		assert.FileExists(t, filePath, "http val should exist")
 
-		// Verify through API
 		err = dirVal.Load(ctx)
 		require.NoError(t, err, "Failed to get val from API")
 		assert.Equal(t, vals.HTTP, dirVal.GetValType(), "Type should be 'http'")
@@ -123,27 +111,25 @@ func TestBasicValCreation(t *testing.T) {
 	})
 }
 
-func TestValPrivacyUpdates(t *testing.T) {
+// TestValUpdatesSuite tests various update operations on vals
+func TestValUpdatesSuite(t *testing.T) {
 	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
 	ctx := context.Background()
 
-	t.Run("Privacy setting changes", func(t *testing.T) {
+	t.Run("Privacy setting updates", func(t *testing.T) {
 		fileName := randomFilename("privacy.S.tsx")
 		filePath := filepath.Join(valsDir, fileName)
 
-		// Create initial val
 		_, err := os.Create(filePath)
 		require.NoError(t, err, "Failed to create file")
 
-		// Get initial val info
 		contents, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read file")
 		val, err := getValFromFileContents(string(contents), testData.APIClient)
 		require.NoError(t, err, "Failed to get val from file contents")
 
-		// Test each privacy setting
 		privacySettings := []string{"public", "private", "unlisted"}
 		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
 
@@ -151,7 +137,6 @@ func TestValPrivacyUpdates(t *testing.T) {
 			err = dirVal.Load(ctx)
 			require.NoError(t, err, "Failed to get val")
 
-			// Update the val's privacy by changing the metadata yaml field
 			valPackage := vals.NewValPackage(dirVal, false, false)
 			dirVal.SetPrivacy(privacy)
 			valText, err := valPackage.ToText()
@@ -159,36 +144,25 @@ func TestValPrivacyUpdates(t *testing.T) {
 			err = os.WriteFile(filePath, []byte(*valText), 0644)
 			require.NoError(t, err, "Failed to write updated val")
 
-			// Verify through API
 			err = dirVal.Load(ctx)
 			require.NoError(t, err, "Failed to get updated val")
 			assert.Equal(t, privacy, dirVal.GetPrivacy(), "Privacy should be "+privacy)
 		}
 	})
-}
-
-func TestValCodeUpdates(t *testing.T) {
-	testData, valsDir := setupTest(t)
-	defer testData.Cleanup()
-
-	ctx := context.Background()
 
 	t.Run("Code updates and versioning", func(t *testing.T) {
 		fileName := randomFilename("code.S.tsx")
 		filePath := filepath.Join(valsDir, fileName)
 
-		// Create empty file first
 		_, err := os.Create(filePath)
 		require.NoError(t, err, "Failed to create file")
 
-		// Get initial val info
 		contents, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read file")
 		val, err := getValFromFileContents(string(contents), testData.APIClient)
 		require.NoError(t, err, "Failed to get val from file contents")
 		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
 
-		// Update code multiple times
 		updates := []string{
 			"console.log('update 1');",
 			"console.log('update 2');",
@@ -199,7 +173,6 @@ func TestValCodeUpdates(t *testing.T) {
 			err = dirVal.Load(ctx)
 			require.NoError(t, err, "Failed to get val")
 
-			// Update through ValPackage
 			valPackage := vals.NewValPackage(dirVal, false, false)
 			dirVal.SetCode(newCode)
 			valText, err := valPackage.ToText()
@@ -207,7 +180,6 @@ func TestValCodeUpdates(t *testing.T) {
 			err = os.WriteFile(filePath, []byte(*valText), 0644)
 			require.NoError(t, err, "Failed to write updated val")
 
-			// Verify through API
 			err = dirVal.Load(ctx)
 			require.NoError(t, err, "Failed to get updated val")
 			assert.Equal(t, int32(i+1), dirVal.GetVersion(), fmt.Sprintf("Version should be %d", i+1))
@@ -216,7 +188,8 @@ func TestValCodeUpdates(t *testing.T) {
 	})
 }
 
-func TestValMetadataOperations(t *testing.T) {
+// TestValMetadataSuite tests metadata-related operations
+func TestValMetadataSuite(t *testing.T) {
 	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
@@ -226,7 +199,6 @@ func TestValMetadataOperations(t *testing.T) {
 		fileName := randomFilename("meta.S.tsx")
 		filePath := filepath.Join(valsDir, fileName)
 
-		// Create initial val
 		_, err := os.Create(filePath)
 		require.NoError(t, err, "Failed to create file")
 
@@ -239,7 +211,6 @@ func TestValMetadataOperations(t *testing.T) {
 		err = dirVal.Load(ctx)
 		require.NoError(t, err, "Failed to get val")
 
-		// Test readme updates
 		newReadme := "Updated readme content"
 		valPackage := vals.NewValPackage(dirVal, false, false)
 		dirVal.SetReadme(newReadme)
@@ -248,12 +219,10 @@ func TestValMetadataOperations(t *testing.T) {
 		err = os.WriteFile(filePath, []byte(*valText), 0644)
 		require.NoError(t, err, "Failed to write updated val")
 
-		// Verify through API
 		err = dirVal.Load(ctx)
 		require.NoError(t, err, "Failed to get updated val")
 		assert.Equal(t, newReadme, dirVal.GetReadme(), "Readme should be updated")
 
-		// Verify metadata fields
 		assert.NotEmpty(t, dirVal.GetModuleLink(), "Module link should exist")
 		assert.NotEmpty(t, dirVal.GetVersionsLink(), "Versions link should exist")
 		assert.NotEmpty(t, dirVal.GetAuthorName(), "Author name should exist")
@@ -261,34 +230,30 @@ func TestValMetadataOperations(t *testing.T) {
 	})
 }
 
-func TestValListingAndDeletion(t *testing.T) {
+// TestValManagementSuite tests listing and deletion operations
+func TestValManagementSuite(t *testing.T) {
 	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
 	ctx := context.Background()
 
 	t.Run("Val listing and deletion", func(t *testing.T) {
-		// Get initial count
 		initialVals, err := vals.ListValDirVals(ctx, testData.APIClient)
 		require.NoError(t, err, "Failed to list initial vals")
 		initialCount := len(initialVals)
 
-		// Create new val through file
 		fileName := randomFilename("listing.S.tsx")
 		filePath := filepath.Join(valsDir, fileName)
 
-		// Create empty file first
 		_, err = os.Create(filePath)
 		require.NoError(t, err, "Failed to create file")
 
-		// Get val info
 		contents, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read file")
 		val, err := getValFromFileContents(string(contents), testData.APIClient)
 		require.NoError(t, err, "Failed to get val from file contents")
 		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
 
-		// Write initial code
 		valPackage := vals.NewValPackage(dirVal, false, false)
 		dirVal.SetCode("console.log('test');")
 		valText, err := valPackage.ToText()
@@ -296,23 +261,21 @@ func TestValListingAndDeletion(t *testing.T) {
 		err = os.WriteFile(filePath, []byte(*valText), 0644)
 		require.NoError(t, err, "Failed to write val")
 
-		// Verify val is in list
 		updatedVals, err := vals.ListValDirVals(ctx, testData.APIClient)
 		require.NoError(t, err, "Failed to list updated vals")
 		assert.Equal(t, initialCount+1, len(updatedVals), "Should have one more val")
 
-		// Delete val by removing file
 		err = os.Remove(filePath)
 		require.NoError(t, err, "Failed to delete val file")
 
-		// Verify deletion
 		finalVals, err := vals.ListValDirVals(ctx, testData.APIClient)
 		require.NoError(t, err, "Failed to list final vals")
 		assert.Equal(t, initialCount, len(finalVals), "Should be back to initial count")
 	})
 }
 
-func TestFileOperations(t *testing.T) {
+// TestFileOperationsSuite tests file system operations
+func TestFileOperationsSuite(t *testing.T) {
 	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
