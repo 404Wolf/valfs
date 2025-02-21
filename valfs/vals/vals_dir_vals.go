@@ -88,15 +88,16 @@ func (v *ValDirVal) Update(ctx context.Context) error {
 	}
 
 	// Create new version
-	_, _, err = v.apiClient.APIClient.ValsAPI.ValsCreateVersion(ctx, v.valId).
+	extVal, _, err := v.apiClient.APIClient.ValsAPI.ValsCreateVersion(ctx, v.GetId()).
 		ValsCreateRequest(*valCreateReqData).
 		Execute()
 	if err != nil {
 		common.Logger.Error("Error creating new version", "error", err)
 		return err
 	}
+	v.loadExtendedValProperties(extVal)
 
-	common.Logger.Info("Successfully updated val code", "valId", v.valId)
+	common.Logger.Info("Successfully updated val code", "valId", v.GetId())
 	return nil
 }
 
@@ -122,8 +123,15 @@ func (v *ValDirVal) Load(ctx context.Context) error {
 		v.readme = *val.Readme.Get()
 	}
 
+	// Load extended properties
+	v.loadExtendedValProperties(val)
+
+	return nil
+}
+
+// loadExtendedValProperties loads extended properties from a Val object
+func (v *ValDirVal) loadExtendedValProperties(val *valgo.ExtendedVal) {
 	// Set additional fields
-	v.public = val.Public
 	v.createdAt = val.CreatedAt
 	v.url = val.Url
 	v.likeCount = val.LikeCount
@@ -145,8 +153,6 @@ func (v *ValDirVal) Load(ctx context.Context) error {
 		v.authorId = authorData.GetId()
 		v.authorName = authorData.GetUsername()
 	}
-
-	return nil
 }
 
 // ListValDirVals is a standalone function to list vals with pagination
@@ -263,11 +269,6 @@ func (v *ValDirVal) GetAuthorId() string {
 // GetCreatedAt returns the creation time of the val
 func (v *ValDirVal) GetCreatedAt() time.Time {
 	return v.createdAt
-}
-
-// GetPublic returns whether the val is public
-func (v *ValDirVal) GetPublic() bool {
-	return v.public
 }
 
 // GetUrl returns the val's URL

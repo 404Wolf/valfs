@@ -92,7 +92,7 @@ func TestValPrivacyUpdates(t *testing.T) {
 
 		// Test each privacy setting
 		privacySettings := []string{"public", "private", "unlisted"}
-		dirVal := vals.GetValDirValOf(testData.APIClient, val.Id)
+		dirVal := vals.GetValDirValOf(testData.APIClient, val.GetId())
 
 		for _, privacy := range privacySettings {
 			err = dirVal.Load(ctx)
