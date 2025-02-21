@@ -45,7 +45,7 @@ jobs:
           asset_name: valfs-linux-amd64
           asset_content_type: application/octet-stream
 
-      - name: Upload Mac Binary
+      - name: Upload Mac Intel Binary
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,4 +53,14 @@ jobs:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./valfs-darwin-amd64
           asset_name: valfs-darwin-amd64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Mac Apple Silicon Binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./valfs-darwin-arm64
+          asset_name: valfs-darwin-arm64
           asset_content_type: application/octet-stream
