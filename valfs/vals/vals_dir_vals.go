@@ -30,13 +30,10 @@ type ValDirVal struct {
 	referenceCount int32
 }
 
-// NewVal initializes a new Val instance for a val with an id that already
+// ValDirValOf gets a new Val instance for a val with an id that already
 // exists
-func GetValDirValOf(apiClient *common.APIClient, valId string) Val {
-	return &ValDirVal{
-		apiClient: apiClient,
-		valId:     valId,
-	}
+func ValDirValOf(apiClient *common.APIClient, valId string) Val {
+	return &ValDirVal{apiClient: apiClient, valId: valId}
 }
 
 // CreateValDirVal creates a new val on the server
@@ -57,7 +54,7 @@ func CreateValDirVal(
 		return nil, err
 	}
 
-	return GetValDirValOf(apiClient, extVal.GetId()), nil
+	return ValDirValOf(apiClient, extVal.GetId()), nil
 }
 
 // DeleteValDirVil deletes a val from the server
@@ -106,21 +103,6 @@ func (v *ValDirVal) Load(ctx context.Context) error {
 	val, _, err := v.apiClient.APIClient.ValsAPI.ValsGet(ctx, v.valId).Execute()
 	if err != nil {
 		return err
-	}
-
-	// Set basic fields
-	v.name = val.GetName()
-	v.valId = val.GetId()
-	v.valType = val.GetType()
-	v.privacy = val.GetPrivacy()
-	v.version = val.GetVersion()
-
-	// Handle nullable fields
-	if val.Code.IsSet() {
-		v.code = *val.Code.Get()
-	}
-	if val.Readme.Get() != nil { // bug where we can't trust .IsSet()
-		v.readme = *val.Readme.Get()
 	}
 
 	// Load extended properties
@@ -195,7 +177,7 @@ func ListValDirVals(ctx context.Context, apiClient *common.APIClient) ([]Val, er
 	// Convert each of the basic vals into Val instances
 	vals := make([]Val, 0, len(allBasicVals))
 	for _, val := range allBasicVals {
-		valDirVal := GetValDirValOf(apiClient, val.GetId())
+		valDirVal := ValDirValOf(apiClient, val.GetId())
 		valDirVal.SetName(val.Name)
 		valDirVal.SetValType(val.Type)
 		valDirVal.SetCode(val.GetCode())
