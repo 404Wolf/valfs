@@ -26,16 +26,17 @@ func LoadConfig() *common.ValfsConfig {
 
 	// Map to config struct
 	config := &common.ValfsConfig{
-		APIKey:               viper.GetString("apiKey"),
-		MountPoint:           viper.GetString("root"),
-		DenoCache:            viper.GetBool("denoCache"),
-		DenoJson:             viper.GetBool("denoJson"),
-		AutoRefresh:          viper.GetBool("autoRefresh"),
-		AutoUnmountOnExit:    viper.GetBool("autoUnmountOnExit"),
-		AutoRefreshInterval:  viper.GetInt("autoRefreshInterval"),
-		EnableValsDirectory:  viper.GetBool("enableValsDirectory"),
-		EnableBlobsDirectory: viper.GetBool("enableBlobsDirectory"),
-		GoFuseDebug:          viper.GetBool("goFuseDebug"),
+		APIKey:                  viper.GetString("apiKey"),
+		MountPoint:              viper.GetString("root"),
+		DenoCache:               viper.GetBool("denoCache"),
+		DenoJson:                viper.GetBool("denoJson"),
+		AutoRefresh:             viper.GetBool("autoRefresh"),
+		AutoUnmountOnExit:       viper.GetBool("autoUnmountOnExit"),
+		AutoRefreshInterval:     viper.GetInt("autoRefreshInterval"),
+		EnableValsDirectory:     viper.GetBool("enableValsDirectory"),
+		EnableProjectsDirectory: viper.GetBool("enableProjectsDirectory"),
+		EnableBlobsDirectory:    viper.GetBool("enableBlobsDirectory"),
+		GoFuseDebug:             viper.GetBool("goFuseDebug"),
 	}
 
 	return config

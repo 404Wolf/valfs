@@ -25,6 +25,9 @@ type ValfsConfig struct {
 	// Add a directory for your vals
 	EnableValsDirectory bool
 
+	// Add a directory for your projects
+	EnableProjectsDirectory bool
+
 	// Add a directory for your blob
 	EnableBlobsDirectory bool
 

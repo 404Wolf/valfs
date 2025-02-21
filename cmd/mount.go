@@ -78,6 +78,7 @@ func ValfsInit() {
 	mountCmd.Flags().BoolVar(&valfsConfig.AutoUnmountOnExit, "auto-unmount", true, "automatically unmount directory on exit")
 	mountCmd.Flags().IntVar(&valfsConfig.AutoRefreshInterval, "refresh-interval", 5, "how often to poll val town website for changes (in seconds)")
 	mountCmd.Flags().BoolVar(&valfsConfig.EnableValsDirectory, "vals-directory", true, "add a directory for your vals")
+	mountCmd.Flags().BoolVar(&valfsConfig.EnableProjectsDirectory, "projects-directory", true, "add a directory for your projects")
 	mountCmd.Flags().BoolVar(&valfsConfig.EnableBlobsDirectory, "blobs-directory", true, "add a directory for your blobs")
 	mountCmd.Flags().BoolVar(&valfsConfig.GoFuseDebug, "fuse-debug", false, "enable go fuse's debug mode")
 	mountCmd.Flags().BoolVar(&valfsConfig.StaticMeta, "static-writes", false, "ensure val file metadata doesn't change on writes")
