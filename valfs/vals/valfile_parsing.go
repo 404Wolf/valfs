@@ -93,14 +93,14 @@ func deconstructVal(contents string) (
 	meta *valPackageFrontmatter,
 	err error,
 ) {
-	// Match the entire frontmatter block including comment markers
+	// Match the first frontmatter block between /*--- and ---*/
 	frontmatterRe := regexp.MustCompile(`(?s)/\*---\n(.*?)\n---\*/`)
 	matches := frontmatterRe.FindStringSubmatch(contents)
 	if len(matches) < 2 {
 		return nil, nil, errors.New("No frontmatter found")
 	}
 
-	// Extract just the YAML content (without comment markers and --- delimiters)
+	// Extract just the YAML content
 	frontmatterContent := matches[1]
 
 	// Parse the frontmatter YAML
@@ -110,9 +110,11 @@ func deconstructVal(contents string) (
 		return nil, nil, fmt.Errorf("failed to parse frontmatter: %w", err)
 	}
 
-	// Find the end of the frontmatter block
-	fullMatch := matches[0]
-	codeSection := strings.TrimSpace(contents[len(fullMatch):])
+	// Find the start and end positions of the frontmatter block
+	frontmatterEnd := strings.Index(contents, "---*/") + 5
+
+	// Extract code section after the first frontmatter block
+	codeSection := strings.TrimSpace(contents[frontmatterEnd:])
 
 	// Handle empty code case
 	if codeSection == "" {

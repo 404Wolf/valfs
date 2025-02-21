@@ -48,8 +48,8 @@ func getValFromFileContents(contents string, apiClient *common.APIClient) (vals.
 	return val, nil
 }
 
-// TestValCreationSuite tests the creation of different types of vals
-func TestValCreationSuite(t *testing.T) {
+// TestValCreation tests the creation of different types of vals
+func TestValCreation(t *testing.T) {
 	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
@@ -111,8 +111,8 @@ func TestValCreationSuite(t *testing.T) {
 	})
 }
 
-// TestValUpdatesSuite tests various update operations on vals
-func TestValUpdatesSuite(t *testing.T) {
+// TestValUpdates tests various update operations on vals
+func TestValUpdates(t *testing.T) {
 	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
@@ -188,8 +188,8 @@ func TestValUpdatesSuite(t *testing.T) {
 	})
 }
 
-// TestValMetadataSuite tests metadata-related operations
-func TestValMetadataSuite(t *testing.T) {
+// TestValMetadata tests metadata-related operations
+func TestValMetadata(t *testing.T) {
 	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
@@ -230,8 +230,8 @@ func TestValMetadataSuite(t *testing.T) {
 	})
 }
 
-// TestValManagementSuite tests listing and deletion operations
-func TestValManagementSuite(t *testing.T) {
+// TestValManagement tests listing and deletion operations
+func TestValManagement(t *testing.T) {
 	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
@@ -274,8 +274,8 @@ func TestValManagementSuite(t *testing.T) {
 	})
 }
 
-// TestFileOperationsSuite tests file system operations
-func TestFileOperationsSuite(t *testing.T) {
+// TestFileOperations tests file system operations
+func TestFileOperations(t *testing.T) {
 	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
@@ -294,5 +294,72 @@ func TestFileOperationsSuite(t *testing.T) {
 
 		assert.NoFileExists(t, oldPath, "Original file should not exist")
 		assert.FileExists(t, newPath, "Renamed file should exist")
+	})
+}
+
+func TestValTypeChange(t *testing.T) {
+	testData, valsDir := setupTest(t)
+	defer testData.Cleanup()
+
+	ctx := context.Background()
+
+	t.Run("Change val type while preserving code", func(t *testing.T) {
+		// Start with a script val
+		scriptName := randomFilename("typechange.S.tsx")
+		scriptPath := filepath.Join(valsDir, scriptName)
+
+		_, err := os.Create(scriptPath)
+		require.NoError(t, err, "Failed to create initial script file")
+
+		contents, err := os.ReadFile(scriptPath)
+		require.NoError(t, err, "Failed to read file")
+		val, err := getValFromFileContents(string(contents), testData.APIClient)
+		require.NoError(t, err, "Failed to get val from file contents")
+		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
+
+		// Set initial code
+		testCode := "export default function handler(req) { return new Response('Hello!'); }"
+		valPackage := vals.NewValPackage(dirVal, false, false)
+		dirVal.SetCode(testCode)
+		valText, err := valPackage.ToText()
+		require.NoError(t, err, "Failed to serialize val package")
+		err = os.WriteFile(scriptPath, []byte(*valText), 0644)
+		require.NoError(t, err, "Failed to write val")
+
+		// Change to HTTP val by renaming
+		httpName := randomFilename("typechange.H.tsx")
+		httpPath := filepath.Join(valsDir, httpName)
+
+		err = os.Rename(scriptPath, httpPath)
+		require.NoError(t, err, "Failed to rename file")
+
+		// Verify code persisted after type change
+		err = dirVal.Load(ctx)
+		require.NoError(t, err, "Failed to load val after type change")
+		assert.Equal(t, vals.HTTP, dirVal.GetValType(), "Type should be changed to HTTP")
+		assert.Equal(t, testCode, dirVal.GetCode(), "Code should remain unchanged after type change")
+
+		// Read the file contents and verify deployment URL exists
+		httpContents, err := os.ReadFile(httpPath)
+		require.NoError(t, err, "Failed to read HTTP val file")
+		deploymentURLPattern := regexp.MustCompile(`deployment:\s*https://.*\.web\.val\.run`)
+		assert.True(t, deploymentURLPattern.Match(httpContents), "HTTP val should have deployment URL")
+
+		// Change back to Script val
+		scriptName = randomFilename("typechange.S.tsx")
+		scriptPath = filepath.Join(valsDir, scriptName)
+		err = os.Rename(httpPath, scriptPath)
+		require.NoError(t, err, "Failed to rename back to script")
+
+		// Read the file contents and verify deployment URL is removed
+		scriptContents, err := os.ReadFile(scriptPath)
+		require.NoError(t, err, "Failed to read Script val file")
+		assert.False(t, deploymentURLPattern.Match(scriptContents), "Script val should not have deployment URL")
+
+		// Verify code still persists
+		err = dirVal.Load(ctx)
+		require.NoError(t, err, "Failed to load val after changing back to script")
+		assert.Equal(t, vals.Script, dirVal.GetValType(), "Type should be changed to Script")
+		assert.Equal(t, testCode, dirVal.GetCode(), "Code should remain unchanged after changing back to script")
 	})
 }

@@ -105,7 +105,7 @@ func (v *ValDirVal) Update(ctx context.Context) error {
 		common.Logger.Error("Error creating new version", "error", err)
 		return err
 	}
-	v.loadExtendedValProperties(extVal)
+	v.setExtendedValProperties(extVal)
 
 	common.Logger.Info("Successfully updated val code", "valId", v.GetId())
 	return nil
@@ -119,13 +119,13 @@ func (v *ValDirVal) Load(ctx context.Context) error {
 	}
 
 	// Load extended properties
-	v.loadExtendedValProperties(val)
+	v.setExtendedValProperties(val)
 
 	return nil
 }
 
-// loadExtendedValProperties loads extended properties from a Val object
-func (v *ValDirVal) loadExtendedValProperties(val *valgo.ExtendedVal) {
+// setExtendedValProperties loads extended properties from a Val object
+func (v *ValDirVal) setExtendedValProperties(val *valgo.ExtendedVal) {
 	// Set basic fields
 	v.name = val.Name
 	v.valId = val.Id
@@ -152,7 +152,10 @@ func (v *ValDirVal) loadExtendedValProperties(val *valgo.ExtendedVal) {
 	links := val.Links
 	if links.Endpoint != nil {
 		v.endpointLink = *links.Endpoint
+	} else {
+		v.endpointLink = ""
 	}
+
 	v.moduleLink = links.Module
 	v.versionsLink = links.Versions
 
