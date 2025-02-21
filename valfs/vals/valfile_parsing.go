@@ -7,142 +7,151 @@ import (
 	"strings"
 
 	common "github.com/404wolf/valfs/common"
-	"github.com/404wolf/valgo"
 	"github.com/goccy/go-yaml"
 	yamlcomment "github.com/zijiren233/yaml-comment"
 )
 
+// ValPackage represents a complete val package with metadata and configuration
 type ValPackage struct {
-	Val    *valgo.ExtendedVal
-	client *common.Client
+	Val Val
+
+	StaticMeta     bool
+	ExecutableVals bool
 }
 
-type ValFrontmatterLinks struct {
-	Website  string  `yaml:"valtown" lc:"🔒"`
+// valPackageFrontmatterLinks contains all the external links and references
+type valPackageFrontmatterLinks struct {
+	Valtown  string  `yaml:"valtown" lc:"🔒"`
 	Module   string  `yaml:"esmModule" lc:"🔒"`
 	Endpoint *string `yaml:"deployment,omitempty" lc:"🔒"`
 	Email    *string `yaml:"email,omitempty" lc:"🔒"`
 }
 
-type ValFrontmatter struct {
-	Id      string              `yaml:"id" lc:"🔒"`
-	Version int32               `yaml:"version" lc:"🔒 (reopen file to see change)"`
-	Privacy string              `yaml:"privacy" lc:"(public|private|unlisted)"`
-	Links   ValFrontmatterLinks `yaml:"links"`
-	Readme  string              `yaml:"readme"`
+// valPackageFrontmatter represents the metadata section of a val package
+type valPackageFrontmatter struct {
+	Id      string                     `yaml:"id" lc:"🔒"`
+	Version int32                      `yaml:"version" lc:"🔒 (reopen file to see change)"`
+	Privacy string                     `yaml:"privacy" lc:"(public|private|unlisted)"`
+	Links   valPackageFrontmatterLinks `yaml:"links"`
+	ReadMe  string                     `yaml:"readme"`
 }
 
-// extractShebang returns the shebang line if present and the remaining content
-func extractShebang(content string) (shebang string, remaining string) {
-	lines := strings.SplitN(content, "\n", 2)
-	if len(lines) > 0 && strings.HasPrefix(lines[0], "#!") {
-		if len(lines) > 1 {
-			return lines[0], strings.TrimSpace(lines[1])
-		}
-		return lines[0], ""
+// NewValPackage creates a new val package from a val
+func NewValPackage(val Val, staticMeta bool, executableVals bool) ValPackage {
+	return ValPackage{
+		Val:            val,
+		StaticMeta:     staticMeta,
+		ExecutableVals: executableVals,
 	}
-	return "", content
 }
 
-// extractMetadata finds and extracts the YAML metadata block from the content
-func extractMetadata(content string) (metadata string, remaining string, err error) {
-	// Try comment-wrapped format first: /*---...---*/
-	commentWrappedRegex := regexp.MustCompile(`(?s)/\*---\n(.*?)\n---\*/`)
-	if match := commentWrappedRegex.FindStringSubmatchIndex(content); match != nil {
-		metadataBlock := content[match[2]:match[3]]
-		beforeMetadata := content[:match[0]]
-		afterMetadata := content[match[1]:]
-		return metadataBlock, beforeMetadata + afterMetadata, nil
-	}
-
-	// Try plain format: ---...---
-	plainRegex := regexp.MustCompile(`(?s)^---\n(.*?)\n---`)
-	if match := plainRegex.FindStringSubmatchIndex(content); match != nil {
-		metadataBlock := content[match[2]:match[3]]
-		remaining := content[match[1]:]
-		return metadataBlock, remaining, nil
-	}
-
-	return "", "", errors.New("no metadata block found")
-}
-
-// DeconstructVal breaks apart a val into its metadata and code contents
-func DeconstructVal(contents string) (code *string, meta *ValFrontmatter, err error) {
-	if len(contents) == 0 {
-		return nil, nil, errors.New("empty contents")
-	}
-
-	// Extract shebang if present
-	shebang, remainingContent := extractShebang(contents)
-
-	// Extract metadata
-	metadataStr, codeContent, err := extractMetadata(remainingContent)
+// ToText converts the val to a package with metadata and code
+func (v *ValPackage) ToText() (*string, error) {
+	frontmatter, err := v.getFrontmatterText()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	// Parse metadata
-	meta = &ValFrontmatter{}
-	if err := yaml.Unmarshal([]byte(metadataStr), meta); err != nil {
-		return nil, nil, fmt.Errorf("failed to parse metadata: %w", err)
+	combined := frontmatter + v.Val.GetCode()
+
+	if v.ExecutableVals {
+		combined = AffixShebang(combined)
 	}
 
-	// Clean up code content and handle shebang
-	codeContent = strings.TrimSpace(codeContent)
-	// Remove any additional shebangs from the code content
-	if strings.HasPrefix(codeContent, "#!") {
-		_, codeContent = extractShebang(codeContent)
-	}
-
-	// Add back the original shebang if it existed
-	if shebang != "" {
-		codeContent = shebang + "\n" + codeContent
-	}
-
-	return &codeContent, meta, nil
+	return &combined, nil
 }
 
-// Create a new val package from a val
-func NewValPackage(client *common.Client, val *valgo.ExtendedVal) ValPackage {
-	return ValPackage{Val: val, client: client}
+// Len returns the length of the code segment of the val package
+func (v *ValPackage) Len() (int, error) {
+	contents, err := v.ToText()
+	if err != nil {
+		return 0, err
+	}
+
+	return len(*contents), nil
 }
 
-// Get just the metadata text
-func (v *ValPackage) GetFrontmatterText() (string, error) {
-	link := v.Val.GetLinks()
+// UpdateVal sets the contents of a val package and updates the underlying val
+func (v *ValPackage) UpdateVal(contents string) error {
+	code, frontmatter, err := deconstructVal(contents)
+	if err != nil {
+		common.Logger.Error("Error deconstructing val", err)
+		return err
+	}
 
-	if v.client.Config.StaticMeta {
-		if strings.Contains(link.Module, "?") {
-			link.Module = strings.Split(link.Module, "?")[0]
+	// Update the underlying val
+	v.Val.SetPrivacy(frontmatter.Privacy)
+	v.Val.SetReadme(frontmatter.ReadMe)
+	v.Val.SetCode(*code)
+
+	return nil
+}
+
+// deconstructVal breaks apart a val into its metadata and code contents
+func deconstructVal(contents string) (
+	code *string,
+	meta *valPackageFrontmatter,
+	err error,
+) {
+	// Match the first frontmatter block between /*--- and ---*/
+	frontmatterRe := regexp.MustCompile(`(?s)/\*---\n(.*?)\n---\*/`)
+	matches := frontmatterRe.FindStringSubmatch(contents)
+	if len(matches) < 2 {
+		return nil, nil, errors.New("No frontmatter found")
+	}
+
+	// Extract just the YAML content
+	frontmatterContent := matches[1]
+
+	// Parse the frontmatter YAML
+	meta = &valPackageFrontmatter{}
+	err = yaml.Unmarshal([]byte(frontmatterContent), meta)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse frontmatter: %w", err)
+	}
+
+	// Find the start and end positions of the frontmatter block
+	frontmatterEnd := strings.Index(contents, "---*/") + 5
+
+	// Extract code section after the first frontmatter block
+	codeSection := strings.TrimSpace(contents[frontmatterEnd:])
+
+	// Handle empty code case
+	if codeSection == "" {
+		codeSection = " "
+	}
+
+	return &codeSection, meta, nil
+}
+
+// getFrontmatterText returns the metadata formatted as YAML with comment markers
+func (v *ValPackage) getFrontmatterText() (string, error) {
+	moduleLink := v.Val.GetModuleLink()
+
+	if v.StaticMeta {
+		if strings.Contains(moduleLink, "?") {
+			moduleLink = strings.Split(moduleLink, "?")[0]
 		}
 	}
 
-	frontmatterValLinks := ValFrontmatterLinks{
-		Website:  v.Val.Url,
-		Module:   link.Module,
-		Endpoint: link.Endpoint,
+	endpointLink := v.Val.GetEndpointLink()
+	frontmatterValLinks := valPackageFrontmatterLinks{
+		Valtown:  getWebsiteLink(v.Val.GetAuthorName(), v.Val.GetName()),
+		Module:   moduleLink,
+		Endpoint: getEndpointLinkPtr(endpointLink),
 	}
 
-	// Handle email vals
-	if v.Val.Type == "email" {
-		if v.Val.GetAuthor().Username.Get() == nil {
-			return "", errors.New("Author username is nil")
-		}
-		emailAddress := fmt.Sprintf("%s.%s@valtown.email", *v.Val.GetAuthor().Username.Get(), v.Val.Name)
+	if v.Val.GetValType() == "email" {
+		emailAddress := fmt.Sprintf("%s.%s@valtown.email", v.Val.GetAuthorName(), v.Val.GetName())
 		frontmatterValLinks.Email = &emailAddress
 	}
 
-	// Handle HTTP vals
-	if v.Val.Type == "http" && link.Endpoint != nil {
-		frontmatterValLinks.Endpoint = link.Endpoint
-	}
-
-	frontmatterVal := ValFrontmatter{
-		Id:      v.Val.Id,
-		Version: v.Val.Version,
-		Privacy: v.Val.Privacy,
+	frontmatterVal := valPackageFrontmatter{
+		Id:      v.Val.GetId(),
+		Version: v.Val.GetVersion(),
+		Privacy: v.Val.GetPrivacy(),
 		Links:   frontmatterValLinks,
-		Readme:  v.Val.GetReadme(),
+		ReadMe:  v.Val.GetReadme(),
 	}
 
 	frontmatterYAML, err := yamlcomment.Marshal(frontmatterVal)
@@ -153,91 +162,15 @@ func (v *ValPackage) GetFrontmatterText() (string, error) {
 	return "/*---\n" + string(frontmatterYAML) + "---*/\n\n", nil
 }
 
-// Convert the val contained in the ValPackage to a package with metadata at the
-// top and the code of the val underneath
-func (v *ValPackage) ToText() (*string, error) {
-	frontmatter, err := v.GetFrontmatterText()
-	if err != nil {
-		return nil, err
-	}
-
-	code := v.Val.GetCode()
-
-	// Remove any existing shebang from the code
-	if strings.HasPrefix(code, "#!") {
-		_, code = extractShebang(code)
-	}
-
-	combined := frontmatter + code
-
-	// Add shebang if needed
-	if v.client.Config.ExecutableVals {
-		// Only add shebang if it's not already present
-		if !strings.HasPrefix(combined, "#!") {
-			combined = AffixShebang(combined)
-		}
-	}
-
-	return &combined, nil
+// getWebsiteLink constructs the val.town website URL for a val
+func getWebsiteLink(authorUsername, valName string) string {
+	return fmt.Sprintf("https://www.val.town/v/%s/%s", authorUsername, valName)
 }
 
-func (v *ValPackage) Len() (int, error) {
-	contents, err := v.ToText()
-	if err != nil {
-		return 0, err
+// getEndpointLinkPtr converts empty endpoint links to nil, otherwise returns pointer
+func getEndpointLinkPtr(endpointLink string) *string {
+	if endpointLink == "" {
+		return nil
 	}
-
-	return len(*contents), nil
-}
-
-// UpdateVal sets the contents of a val package
-func (v *ValPackage) UpdateVal(contents string) error {
-	if v == nil {
-		return errors.New("ValPackage is nil")
-	}
-	if v.Val == nil {
-		return errors.New("Underlying Val is nil")
-	}
-	if len(contents) == 0 {
-		return errors.New("Contents is empty")
-	}
-
-	code, frontmatter, err := DeconstructVal(contents)
-	if err != nil {
-		common.Logger.Error("Error deconstructing val", err)
-		return err
-	}
-
-	if code == nil {
-		return errors.New("Extracted code is nil")
-	}
-	if frontmatter == nil {
-		return errors.New("Extracted frontmatter is nil")
-	}
-
-	// Validate privacy value
-	validPrivacy := map[string]bool{
-		"public":   true,
-		"private":  true,
-		"unlisted": true,
-	}
-	if !validPrivacy[frontmatter.Privacy] {
-		return fmt.Errorf("Invalid privacy value: %s", frontmatter.Privacy)
-	}
-
-	v.Val.Privacy = frontmatter.Privacy
-	v.Val.SetReadme(frontmatter.Readme)
-	v.Val.SetCode(*code)
-
-	return nil
-}
-
-// LooksLikeMetadata returns true if the string appears to contain metadata
-func LooksLikeMetadata(contents string) bool {
-	if len(contents) == 0 {
-		return false
-	}
-
-	_, _, err := extractMetadata(contents)
-	return err == nil
+	return &endpointLink
 }

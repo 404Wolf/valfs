@@ -11,6 +11,7 @@ import (
 
 	"github.com/404wolf/valfs/common"
 	"github.com/404wolf/valgo"
+	"go.uber.org/zap"
 )
 
 const BinaryName = "build"
@@ -47,6 +48,8 @@ func findProjectRoot() (string, error) {
 
 // setupTest prepares a new test environment for each test
 func SetupTest(t *testing.T, dirName string) (*TestData, string) {
+	common.Logger = zap.NewNop().Sugar()
+
 	t.Helper()
 
 	// Set up the test filesystem

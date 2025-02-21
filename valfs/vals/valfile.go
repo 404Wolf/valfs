@@ -2,12 +2,10 @@ package valfs
 
 import (
 	"context"
-	"errors"
 	"syscall"
 	"time"
 
 	common "github.com/404wolf/valfs/common"
-	"github.com/404wolf/valgo"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
@@ -21,11 +19,10 @@ const ValFileFlagsNoExecute = syscall.S_IFREG | 0o666
 type ValFile struct {
 	fs.Inode
 
-	ModifiedAt   time.Time          // Last modification timestamp
-	BasicData    valgo.BasicVal     // Basic val metadata
-	ExtendedData *valgo.ExtendedVal // Full val data (loaded on demand)
-	client       *common.Client     // Client for API operations
-	parent       ValsContainer      // Parent directory containing this val file
+	ModifiedAt time.Time      // Last modification timestamp
+	Val        Val            // Val data and operations
+	client     *common.Client // Client for API operations
+	parent     ValsContainer  // Parent directory containing this val file
 }
 
 // Interface compliance checks
@@ -35,66 +32,17 @@ var _ = (fs.NodeWriter)((*ValFile)(nil))
 var _ = (fs.NodeOpener)((*ValFile)(nil))
 var _ = (fs.FileReader)((*ValFileHandle)(nil))
 
-// GetExtendedData fetches the full val data if not already loaded
-func (f *ValFile) GetExtendedData(ctx context.Context) (*valgo.ExtendedVal, error) {
-	if f.ExtendedData == nil {
-		extVal, err := f.parent.GetValOps().Read(ctx, f.BasicData.GetId())
-		if err != nil {
-			return nil, errors.New("Failed to fetch extended data")
-		}
-		f.ExtendedData = extVal
-	}
-	return f.ExtendedData, nil
-}
-
-// getValVersionCreatedAt retrieves the creation timestamp of a val version
-func getValVersionCreatedAt(val valgo.ExtendedVal, client *common.Client) *time.Time {
-	modified := val.VersionCreatedAt
-	if modified == nil {
-		ctx := context.Background()
-		versionList, _, err := client.APIClient.ValsAPI.ValsList(ctx,
-			val.Id).Offset(0).Limit(1).Execute()
-		if err != nil {
-			common.Logger.Error("Error fetching version list", err)
-		}
-		modified = &versionList.Data[0].CreatedAt
-	}
-	return modified
-}
-
-// NewValFileFromBasicVal creates a new ValFile from basic val metadata
-func NewValFileFromBasicVal(
-	ctx context.Context,
-	val valgo.BasicVal,
+// NewValFileFromVal creates a new ValFile from complete val data
+func NewValFile(
+	val Val,
 	client *common.Client,
 	parent ValsContainer,
 ) (*ValFile, error) {
-	common.Logger.Info("Create new val file from basic val", "name", val.Name)
-
-	valFile := &ValFile{
-		BasicData:  val,
+	return &ValFile{
+		Val:        val,
 		client:     client,
 		parent:     parent,
 		ModifiedAt: time.Now(),
-	}
-
-	return valFile, nil
-}
-
-// NewValFileFromExtendedVal creates a new ValFile from complete val data
-func NewValFileFromExtendedVal(
-	val valgo.ExtendedVal,
-	client *common.Client,
-	parent ValsContainer,
-) (*ValFile, error) {
-	common.Logger.Info("Create new val file from extended val", "name", val.Name)
-
-	return &ValFile{
-		BasicData:    val.ToBasicVal(),
-		ExtendedData: &val,
-		client:       client,
-		parent:       parent,
-		ModifiedAt:   *getValVersionCreatedAt(val, client),
 	}, nil
 }
 
@@ -109,30 +57,33 @@ func (f *ValFile) ModifiedNow() {
 	f.ModifiedAt = time.Now()
 }
 
+func (f *ValFile) newValPackage() ValPackage {
+	return NewValPackage(
+		f.Val,
+		f.client.Config.StaticMeta,
+		f.client.Config.ExecutableVals,
+	)
+}
+
 // Open handles opening the file and creates a new file handle
 func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 	fh fs.FileHandle,
 	fuseFlags uint32,
 	errno syscall.Errno,
 ) {
-	// Load extended data if not already loaded
-	if f.ExtendedData == nil {
-		common.Logger.Info("Valfile was lazy. Now getting extended val data", "name", f.BasicData.Name)
-		extVal, err := f.parent.GetValOps().Read(ctx, f.BasicData.Id)
-		if err != nil {
-			common.Logger.Error("Error fetching val", "error", err)
-			return nil, 0, syscall.EIO
-		}
-		f.ExtendedData = extVal
+	err := f.Val.Load(ctx)
+	if err != nil {
+		common.Logger.Error("Error fetching val", "error", err)
+		return nil, 0, syscall.EIO
 	}
-	common.Logger.Info("Opening val file", "name", f.BasicData.Name)
+
+	common.Logger.Info("Opening val file", "name", f.Val.GetName())
 
 	fh = &ValFileHandle{
 		ValFile: f,
 		client:  f.client,
 	}
 
-	// Return FOPEN_DIRECT_IO so content is not cached
 	return fh, fuse.FOPEN_DIRECT_IO, syscall.F_OK
 }
 
@@ -142,13 +93,12 @@ func (fh *ValFileHandle) Read(
 	dest []byte,
 	off int64,
 ) (fuse.ReadResult, syscall.Errno) {
-	extVal, err := fh.ValFile.GetExtendedData(ctx)
+	err := fh.ValFile.Val.Load(ctx)
 	if err != nil {
 		return nil, syscall.EIO
 	}
-	common.Logger.Info("Reading val file", "val", extVal)
 
-	valPackage := NewValPackage(fh.client, extVal)
+	valPackage := fh.ValFile.newValPackage()
 	content, err := valPackage.ToText()
 	if err != nil {
 		return nil, syscall.EIO
@@ -163,60 +113,41 @@ func (fh *ValFileHandle) Read(
 }
 
 // Write handles writing data to the file
-func (c *ValFile) Write(
+func (f *ValFile) Write(
 	ctx context.Context,
 	fh fs.FileHandle,
 	data []byte,
 	off int64,
 ) (written uint32, errno syscall.Errno) {
-	prevExtVal, err := c.GetExtendedData(ctx)
-	common.Logger.Info("Writing to val file", "val", prevExtVal.GetId())
-
-	newValPackage := NewValPackage(c.client, prevExtVal)
+	err := f.Val.Load(ctx)
 	if err != nil {
-		common.Logger.Error("Error updating val package", "error", err)
 		return 0, syscall.EIO
 	}
+
+	newValPackage := f.newValPackage()
 	err = newValPackage.UpdateVal(string(data))
 
-	// If off==0 then they might have "echo 'foo' > foo.H.tsx". We don't support
-	// creating val files by piping into the val file like this because we need
-	// to attach the metadata to the top of the file, but you CAN create files
-	// like this. This is useful for testing and automation. If a user writes to
-	// the file they will be writing at an offset other than 0, so this
-	// protection should be good enough for now.
-	if err != nil && off != 0 {
+	if err != nil && len(data) != 0 {
 		common.Logger.Error("Bad input ", err)
 		return 0, syscall.EINVAL
 	}
-	extVal := newValPackage.Val
 
-	// Update metadata (which we harvest from the top of the file) seperately, we
-	// can't change the code and metadata at the same time because of a val town
-	// api bug.
-	c.parent.GetValOps().Update(ctx, extVal)
-
-	//  Update the val's code in valtown
-	err = c.parent.GetValOps().UpdateCode(ctx, prevExtVal.GetId(), newValPackage.Val.GetCode())
+	err = f.Val.Update(ctx)
 	if err != nil {
-		common.Logger.Error("Error updating val code", "error", err)
+		common.Logger.Errorf("Error updating val, error: %s", err)
 		return 0, syscall.EIO
 	}
 
-	if !c.client.Config.StaticMeta {
-		extVal, err = c.parent.GetValOps().Read(ctx, prevExtVal.GetId())
+	if !f.client.Config.StaticMeta {
+		err = f.Val.Load(ctx)
 		if err != nil {
-			common.Logger.Error("Error fetching val", "error", err)
 			return 0, syscall.EIO
 		}
-		c.ExtendedData = extVal
-		c.ModifiedNow()
-	} else {
-		c.ModifiedAt = time.Now().Add(-1 * time.Second)
+		f.ModifiedNow()
 	}
 
-	filename := ConstructFilename(c.BasicData.GetName(), ValType(c.BasicData.GetType()))
-	waitThenMaybeDenoCache(filename, c.client)
+	filename := ConstructFilename(f.Val.GetName(), f.Val.GetValType())
+	waitThenMaybeDenoCache(filename, f.client)
 
 	return uint32(len(data)), syscall.F_OK
 }
@@ -227,35 +158,34 @@ func (f *ValFile) Getattr(
 	fh fs.FileHandle,
 	out *fuse.AttrOut,
 ) syscall.Errno {
-	common.Logger.Info("Getting attributes for val file", "name", f.BasicData.Name)
+	common.Logger.Info("Getting attributes for val file", "name", f.Val.GetName())
 
-	// Handle basic attributes if extended data isn't loaded
-	if f.ExtendedData == nil {
-		f.assignValMode(out)
-		out.Size = uint64(len(f.BasicData.GetCode()) + 500)
-		modified := time.Unix(0, 0)
-		out.SetTimes(&modified, &modified, &modified)
-		return 0
+	valPackage := NewValPackage(
+		f.Val,
+		f.client.Config.StaticMeta,
+		f.client.Config.ExecutableVals,
+	)
+
+	// We do noy want to fetch all the contents of the val using .Load, since
+	// this method needs to be super fast (it's called a lot). By default we will
+	// sometimes construct a Val with a val id and basic attributes before doing
+	// a load to get extended attributes. One such "extended" attribute is the
+	// author id. If we haven't loaded this, then we definitely haven't loaded
+	// the other extended attributes either. In this case, don't bother, just
+	// don't specify a size.
+	if f.Val.GetAuthorId() != "" {
+		contentLen, err := valPackage.Len()
+		if err != nil {
+			common.Logger.Error("Error getting content length", "error", err)
+			return syscall.EIO
+		}
+		out.Size = uint64(contentLen)
 	}
 
-	valPackage := NewValPackage(f.client, f.ExtendedData)
-	contentLen, err := valPackage.Len()
-	if err != nil {
-		common.Logger.Error("Error getting content length", "error", err)
-		return syscall.EIO
-	}
-
-	out.Size = uint64(contentLen)
 	f.assignValMode(out)
 
 	modified := &f.ModifiedAt
 	out.SetTimes(modified, modified, modified)
-
-	common.Logger.Info("Got attributes for val file",
-		"name", f.BasicData.Name,
-		"size", out.Size,
-		"mode", out.Mode,
-		"modified", *modified)
 
 	return syscall.F_OK
 }
@@ -267,7 +197,7 @@ func (f *ValFile) Setattr(
 	in *fuse.SetAttrIn,
 	out *fuse.AttrOut,
 ) syscall.Errno {
-	common.Logger.Info("Setting attributes for val file", "name", f.BasicData.Name)
+	common.Logger.Info("Setting attributes for val file", "name", f.Val.GetName())
 
 	out.Size = in.Size
 	f.assignValMode(out)
@@ -284,5 +214,4 @@ func (f *ValFile) assignValMode(out *fuse.AttrOut) {
 	} else {
 		out.Mode = ValFileFlagsNoExecute
 	}
-
 }

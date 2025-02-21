@@ -49,6 +49,7 @@
                 cobra-cli
                 openapi-generator-cli
                 inotify-tools
+                nil
               ])
               ++ [
                 # Add treefmt to the development shell
