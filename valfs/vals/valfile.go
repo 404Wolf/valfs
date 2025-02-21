@@ -127,7 +127,7 @@ func (f *ValFile) Write(
 	newValPackage := f.newValPackage()
 	err = newValPackage.UpdateVal(string(data))
 
-	if err != nil && off != 0 {
+	if err != nil && len(data) != 0 {
 		common.Logger.Error("Bad input ", err)
 		return 0, syscall.EINVAL
 	}

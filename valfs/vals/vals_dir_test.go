@@ -285,7 +285,7 @@ func TestFileOperations(t *testing.T) {
 		oldPath := filepath.Join(valsDir, oldName)
 		newPath := filepath.Join(valsDir, newName)
 
-		err := os.WriteFile(oldPath, []byte("console.log('rename test');"), 0644)
+		_, err := os.Create(oldPath)
 		require.NoError(t, err, "Failed to create file")
 		assert.FileExists(t, oldPath, "Original file should exist")
 
@@ -361,5 +361,22 @@ func TestValTypeChange(t *testing.T) {
 		require.NoError(t, err, "Failed to load val after changing back to script")
 		assert.Equal(t, vals.Script, dirVal.GetValType(), "Type should be changed to Script")
 		assert.Equal(t, testCode, dirVal.GetCode(), "Code should remain unchanged after changing back to script")
+	})
+}
+
+func TestInvalidValContents(t *testing.T) {
+	testData, valsDir := setupTest(t)
+	defer testData.Cleanup()
+
+	t.Run("Prevent writing invalid content to filesystem", func(t *testing.T) {
+		fileName := randomFilename("invalid.S.tsx")
+		filePath := filepath.Join(valsDir, fileName)
+
+		// Try to create and write invalid content
+		invalidContent := "console.log('just some code');"
+		err := os.WriteFile(filePath, []byte(invalidContent), 0644)
+
+		// Verify that the write operation itself fails
+		assert.Error(t, err, "Should not be able to write invalid content to filesystem")
 	})
 }
