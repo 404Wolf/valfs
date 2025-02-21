@@ -35,7 +35,7 @@ func getValFromFileContents(t *testing.T, apiClient *common.APIClient, contents 
 	return val
 }
 
-func TestCreateVal(t *testing.T) {
+func TestBasicValCreation(t *testing.T) {
 	testData, blobDir := setupTest(t)
 	defer testData.Cleanup()
 
@@ -44,64 +44,197 @@ func TestCreateVal(t *testing.T) {
 		filePath := filepath.Join(blobDir, fileName)
 
 		// Create the val
-		err := os.WriteFile(filePath, []byte("Content of file1"), 0644)
-		require.NoError(t, err, "Failed to create file1")
-		assert.FileExists(t, filePath, " should exist")
+		err := os.WriteFile(filePath, []byte("console.log('test');"), 0644)
+		require.NoError(t, err, "Failed to create file")
+		assert.FileExists(t, filePath, "File should exist")
 
-		// Assert the val got created and has correct meta
+		// Verify metadata and type
 		finalContents, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read final file")
 		val := getValFromFileContents(t, testData.APIClient, string(finalContents))
 		assert.Equal(t, "script", val.Type, "Type should be 'script'")
+		assert.Equal(t, int32(0), val.Version, "Initial version should be 0")
 	})
 
 	t.Run("Create http val", func(t *testing.T) {
 		fileName := randomFilename("create2.H.tsx")
 		filePath := filepath.Join(blobDir, fileName)
 
-		// Create the val
-		err := os.WriteFile(filePath, []byte("Content of file2"), 0644)
+		err := os.WriteFile(filePath, []byte("export default function(){return new Response('test')}"), 0644)
 		require.NoError(t, err, "Failed to create http val")
 		assert.FileExists(t, filePath, "http val should exist")
 
-		// Assert the val got created and has correct meta
 		finalContents, err := os.ReadFile(filePath)
 		require.NoError(t, err, "Failed to read final file")
 		val := getValFromFileContents(t, testData.APIClient, string(finalContents))
 		assert.Equal(t, "http", val.Type, "Type should be 'http'")
 	})
-
-	t.Run("Create invalid name", func(t *testing.T) {
-		fileName := randomFilename("create2.H.tsx")
-		filePath := filepath.Join(blobDir, fileName)
-
-		err := os.WriteFile(filePath, []byte("Content of file2"), 0644)
-		require.NoError(t, err, "Failed to create file2")
-		assert.FileExists(t, filePath, "file2 should exist")
-	})
 }
 
-func TestDeleteVal(t *testing.T) {
+func TestValPrivacyUpdates(t *testing.T) {
 	testData, blobDir := setupTest(t)
 	defer testData.Cleanup()
 
-	t.Run("Delete val file", func(t *testing.T) {
-		fileName := randomFilename("create3.S.tsx")
+	ctx := context.Background()
+
+	t.Run("Privacy setting changes", func(t *testing.T) {
+		fileName := randomFilename("privacy.S.tsx")
 		filePath := filepath.Join(blobDir, fileName)
 
-		// Create file first
-		err := os.WriteFile(filePath, []byte("Content to delete"), 0644)
-		require.NoError(t, err, "Failed to create file for deletion")
-		assert.FileExists(t, filePath, "File should exist before deletion")
+		// Create initial val
+		err := os.WriteFile(filePath, []byte("console.log('privacy test');"), 0644)
+		require.NoError(t, err, "Failed to create file")
 
-		// Delete the file
-		err = os.Remove(filePath)
-		require.NoError(t, err, "Failed to delete file")
-		assert.NoFileExists(t, filePath, "File should not exist after deletion")
+		// Get initial val info
+		contents, err := os.ReadFile(filePath)
+		require.NoError(t, err, "Failed to read file")
+		val := getValFromFileContents(t, testData.APIClient, string(contents))
+
+		// Test each privacy setting
+		privacySettings := []string{"public", "private", "unlisted"}
+		dirVal := vals.GetValDirValOf(testData.APIClient, val.Id)
+
+		for _, privacy := range privacySettings {
+			err = dirVal.Load(ctx)
+			require.NoError(t, err, "Failed to get val")
+
+			dirVal.SetPrivacy(privacy)
+			err = dirVal.Update(ctx)
+			require.NoError(t, err, "Failed to update privacy to "+privacy)
+
+			// Verify through API
+			err = dirVal.Load(ctx)
+			require.NoError(t, err, "Failed to get updated val")
+			assert.Equal(t, privacy, dirVal.GetPrivacy(), "Privacy should be "+privacy)
+		}
 	})
 }
 
-func TestRenameVal(t *testing.T) {
+func TestValCodeUpdates(t *testing.T) {
+	testData, blobDir := setupTest(t)
+	defer testData.Cleanup()
+
+	ctx := context.Background()
+
+	t.Run("Code updates and versioning", func(t *testing.T) {
+		fileName := randomFilename("code.S.tsx")
+		filePath := filepath.Join(blobDir, fileName)
+
+		// Create initial val
+		initialCode := "console.log('initial');"
+		err := os.WriteFile(filePath, []byte(initialCode), 0644)
+		require.NoError(t, err, "Failed to create file")
+
+		// Get initial val
+		contents, err := os.ReadFile(filePath)
+		require.NoError(t, err, "Failed to read file")
+		val := getValFromFileContents(t, testData.APIClient, string(contents))
+		dirVal := vals.GetValDirValOf(testData.APIClient, val.Id)
+
+		// Update code multiple times
+		updates := []string{
+			"console.log('update 1');",
+			"console.log('update 2');",
+			"console.log('update 3');",
+		}
+
+		for i, newCode := range updates {
+			err = dirVal.Load(ctx)
+			require.NoError(t, err, "Failed to get val")
+
+			dirVal.SetCode(newCode)
+			err = dirVal.Update(ctx)
+			require.NoError(t, err, "Failed to update code")
+
+			// Verify version increment and code update
+			err = dirVal.Load(ctx)
+			require.NoError(t, err, "Failed to get updated val")
+			assert.Equal(t, int32(i+1), dirVal.GetVersion(), fmt.Sprintf("Version should be %d", i+1))
+			assert.Equal(t, newCode, dirVal.GetCode(), "Code should be updated")
+		}
+	})
+}
+
+func TestValMetadataOperations(t *testing.T) {
+	testData, blobDir := setupTest(t)
+	defer testData.Cleanup()
+
+	ctx := context.Background()
+
+	t.Run("Metadata updates and persistence", func(t *testing.T) {
+		fileName := randomFilename("meta.S.tsx")
+		filePath := filepath.Join(blobDir, fileName)
+
+		// Create initial val
+		err := os.WriteFile(filePath, []byte("console.log('metadata test');"), 0644)
+		require.NoError(t, err, "Failed to create file")
+
+		contents, err := os.ReadFile(filePath)
+		require.NoError(t, err, "Failed to read file")
+		val := getValFromFileContents(t, testData.APIClient, string(contents))
+		dirVal := vals.GetValDirValOf(testData.APIClient, val.Id)
+
+		err = dirVal.Load(ctx)
+		require.NoError(t, err, "Failed to get val")
+
+		// Test readme updates
+		newReadme := "Updated readme content"
+		dirVal.SetReadme(newReadme)
+		err = dirVal.Update(ctx)
+		require.NoError(t, err, "Failed to update readme")
+
+		err = dirVal.Load(ctx)
+		require.NoError(t, err, "Failed to get updated val")
+		assert.Equal(t, newReadme, dirVal.GetReadme(), "Readme should be updated")
+
+		// Verify metadata fields
+		assert.NotEmpty(t, dirVal.GetModuleLink(), "Module link should exist")
+		assert.NotEmpty(t, dirVal.GetVersionsLink(), "Versions link should exist")
+		assert.NotEmpty(t, dirVal.GetAuthorName(), "Author name should exist")
+		assert.NotEmpty(t, dirVal.GetAuthorId(), "Author ID should exist")
+	})
+}
+
+func TestValListingAndDeletion(t *testing.T) {
+	testData, _ := setupTest(t)
+	defer testData.Cleanup()
+
+	ctx := context.Background()
+
+	t.Run("Val listing and deletion", func(t *testing.T) {
+		// Get initial count
+		initialVals, err := vals.ListValDirVals(ctx, testData.APIClient)
+		require.NoError(t, err, "Failed to list initial vals")
+		initialCount := len(initialVals)
+
+		// Create new val
+		newVal, err := vals.CreateValDirVal(
+			ctx,
+			testData.APIClient,
+			vals.Script,
+			"console.log('test');",
+			"test_val",
+			"unlisted",
+		)
+		require.NoError(t, err, "Failed to create test val")
+
+		// Verify val is in list
+		updatedVals, err := vals.ListValDirVals(ctx, testData.APIClient)
+		require.NoError(t, err, "Failed to list updated vals")
+		assert.Equal(t, initialCount+1, len(updatedVals), "Should have one more val")
+
+		// Delete val
+		err = vals.DeleteValDirVal(ctx, testData.APIClient, newVal.GetId())
+		require.NoError(t, err, "Failed to delete val")
+
+		// Verify deletion
+		finalVals, err := vals.ListValDirVals(ctx, testData.APIClient)
+		require.NoError(t, err, "Failed to list final vals")
+		assert.Equal(t, initialCount, len(finalVals), "Should be back to initial count")
+	})
+}
+
+func TestFileOperations(t *testing.T) {
 	testData, blobDir := setupTest(t)
 	defer testData.Cleanup()
 
@@ -111,12 +244,10 @@ func TestRenameVal(t *testing.T) {
 		oldPath := filepath.Join(blobDir, oldName)
 		newPath := filepath.Join(blobDir, newName)
 
-		// Create initial file
-		err := os.WriteFile(oldPath, []byte("Content to rename"), 0644)
-		require.NoError(t, err, "Failed to create file for renaming")
+		err := os.WriteFile(oldPath, []byte("console.log('rename test');"), 0644)
+		require.NoError(t, err, "Failed to create file")
 		assert.FileExists(t, oldPath, "Original file should exist")
 
-		// Rename the file
 		err = os.Rename(oldPath, newPath)
 		require.NoError(t, err, "Failed to rename file")
 

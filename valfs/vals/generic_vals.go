@@ -9,7 +9,7 @@ const ApiPageLimit = 99
 // Val defines the required methods for a mutatable val object
 type Val interface {
 	Update(ctx context.Context) error
-	Get(ctx context.Context) error
+	Load(ctx context.Context) error
 
 	SetName(name string)
 	SetValType(valType string)

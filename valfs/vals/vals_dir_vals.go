@@ -22,7 +22,7 @@ type ValDirVal struct {
 	endpointLink   string
 	moduleLink     string
 	versionsLink   string
-	client         *common.Client
+	apiClient      *common.APIClient
 	createdAt      time.Time
 	public         bool
 	url            string
@@ -32,17 +32,17 @@ type ValDirVal struct {
 
 // NewVal initializes a new Val instance for a val with an id that already
 // exists
-func GetValDirValOf(client *common.Client, valId string) Val {
+func GetValDirValOf(apiClient *common.APIClient, valId string) Val {
 	return &ValDirVal{
-		client: client,
-		valId:  valId,
+		apiClient: apiClient,
+		valId:     valId,
 	}
 }
 
 // CreateValDirVal creates a new val on the server
 func CreateValDirVal(
 	ctx context.Context,
-	client *common.Client,
+	apiClient *common.APIClient,
 	valType ValType,
 	code, name, privacy string,
 ) (Val, error) {
@@ -52,17 +52,17 @@ func CreateValDirVal(
 	createReq.SetType(string(valType))
 	createReq.SetPrivacy(privacy)
 
-	extVal, _, err := client.APIClient.ValsAPI.ValsCreate(ctx).ValsCreateRequest(*createReq).Execute()
+	extVal, _, err := apiClient.APIClient.ValsAPI.ValsCreate(ctx).ValsCreateRequest(*createReq).Execute()
 	if err != nil {
 		return nil, err
 	}
 
-	return GetValDirValOf(client, extVal.GetId()), nil
+	return GetValDirValOf(apiClient, extVal.GetId()), nil
 }
 
 // DeleteValDirVil deletes a val from the server
-func DeleteValDirVal(ctx context.Context, client *common.Client, valId string) error {
-	_, err := client.APIClient.ValsAPI.ValsDelete(ctx, valId).Execute()
+func DeleteValDirVal(ctx context.Context, apiClient *common.APIClient, valId string) error {
+	_, err := apiClient.APIClient.ValsAPI.ValsDelete(ctx, valId).Execute()
 	return err
 }
 
@@ -74,7 +74,7 @@ func (v *ValDirVal) Update(ctx context.Context) error {
 	updateReq.SetType(v.valType)
 	updateReq.SetPrivacy(v.privacy)
 	updateReq.SetReadme(v.readme)
-	_, err := v.client.APIClient.ValsAPI.ValsUpdate(ctx, v.valId).ValsUpdateRequest(*updateReq).Execute()
+	_, err := v.apiClient.APIClient.ValsAPI.ValsUpdate(ctx, v.valId).ValsUpdateRequest(*updateReq).Execute()
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (v *ValDirVal) Update(ctx context.Context) error {
 	}
 
 	// Create new version
-	_, _, err = v.client.APIClient.ValsAPI.ValsCreateVersion(ctx, v.valId).
+	_, _, err = v.apiClient.APIClient.ValsAPI.ValsCreateVersion(ctx, v.valId).
 		ValsCreateRequest(*valCreateReqData).
 		Execute()
 	if err != nil {
@@ -100,9 +100,9 @@ func (v *ValDirVal) Update(ctx context.Context) error {
 	return nil
 }
 
-// Get retrieves the val details from the server
-func (v *ValDirVal) Get(ctx context.Context) error {
-	val, _, err := v.client.APIClient.ValsAPI.ValsGet(ctx, v.valId).Execute()
+// Load retrieves the val details from the server
+func (v *ValDirVal) Load(ctx context.Context) error {
+	val, _, err := v.apiClient.APIClient.ValsAPI.ValsGet(ctx, v.valId).Execute()
 	if err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ func (v *ValDirVal) Get(ctx context.Context) error {
 	if val.Code.IsSet() {
 		v.code = *val.Code.Get()
 	}
-	if val.Readme.IsSet() {
+	if val.Readme.Get() != nil { // bug where we can't trust .IsSet()
 		v.readme = *val.Readme.Get()
 	}
 
@@ -150,8 +150,8 @@ func (v *ValDirVal) Get(ctx context.Context) error {
 }
 
 // ListValDirVals is a standalone function to list vals with pagination
-func ListValDirVals(ctx context.Context, client *common.Client) ([]Val, error) {
-	meResp, _, err := client.APIClient.MeAPI.MeGet(ctx).Execute()
+func ListValDirVals(ctx context.Context, apiClient *common.APIClient) ([]Val, error) {
+	meResp, _, err := apiClient.APIClient.MeAPI.MeGet(ctx).Execute()
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +160,7 @@ func ListValDirVals(ctx context.Context, client *common.Client) ([]Val, error) {
 	currentOffset := int32(0)
 
 	for {
-		basicVals, _, err := client.APIClient.UsersAPI.UsersVals(ctx, meResp.GetId()).
+		basicVals, _, err := apiClient.APIClient.UsersAPI.UsersVals(ctx, meResp.GetId()).
 			Offset(currentOffset).
 			Limit(ApiPageLimit).
 			Execute()
@@ -189,7 +189,13 @@ func ListValDirVals(ctx context.Context, client *common.Client) ([]Val, error) {
 	// Convert each of the basic vals into Val instances
 	vals := make([]Val, 0, len(allBasicVals))
 	for _, val := range allBasicVals {
-		vals = append(vals, GetValDirValOf(client, val.GetId()))
+		valDirVal := GetValDirValOf(apiClient, val.GetId())
+		valDirVal.SetName(val.Name)
+		valDirVal.SetValType(val.Type)
+		valDirVal.SetCode(val.GetCode())
+		valDirVal.SetPrivacy(val.Privacy)
+		valDirVal.SetReadme("") // No readme in BasicVal, setting empty
+		vals = append(vals, valDirVal)
 	}
 	return vals, nil
 }

@@ -63,7 +63,7 @@ func (f *ValFile) Open(ctx context.Context, openFlags uint32) (
 	fuseFlags uint32,
 	errno syscall.Errno,
 ) {
-	err := f.Val.Get(ctx)
+	err := f.Val.Load(ctx)
 	if err != nil {
 		common.Logger.Error("Error fetching val", "error", err)
 		return nil, 0, syscall.EIO
@@ -85,7 +85,7 @@ func (fh *ValFileHandle) Read(
 	dest []byte,
 	off int64,
 ) (fuse.ReadResult, syscall.Errno) {
-	err := fh.ValFile.Val.Get(ctx)
+	err := fh.ValFile.Val.Load(ctx)
 	if err != nil {
 		return nil, syscall.EIO
 	}
@@ -111,13 +111,8 @@ func (c *ValFile) Write(
 	data []byte,
 	off int64,
 ) (written uint32, errno syscall.Errno) {
-	err := c.Val.Get(ctx)
-	if err != nil {
-		return 0, syscall.EIO
-	}
-
 	newValPackage := NewValPackage(c.client, c.Val)
-	err = newValPackage.UpdateVal(string(data))
+	err := newValPackage.UpdateVal(string(data))
 
 	if err != nil && off != 0 {
 		common.Logger.Error("Bad input ", err)
@@ -126,18 +121,16 @@ func (c *ValFile) Write(
 
 	err = c.Val.Update(ctx)
 	if err != nil {
-		common.Logger.Error("Error updating val", "error", err)
+		common.Logger.Errorf("Error updating val, error: %s", err)
 		return 0, syscall.EIO
 	}
 
 	if !c.client.Config.StaticMeta {
-		err = c.Val.Get(ctx)
+		err = c.Val.Load(ctx)
 		if err != nil {
 			return 0, syscall.EIO
 		}
 		c.ModifiedNow()
-	} else {
-		c.ModifiedAt = time.Now().Add(-1 * time.Second)
 	}
 
 	filename := ConstructFilename(c.Val.GetName(), c.Val.GetValType())

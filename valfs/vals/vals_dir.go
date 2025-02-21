@@ -94,7 +94,7 @@ func (c *ValsDir) Unlink(ctx context.Context, name string) syscall.Errno {
 	}
 
 	common.Logger.Infof("Attempting to delete val %s (ID: %s)", name, valFile.Val.GetId())
-	err := DeleteValDirVal(ctx, c.client, valFile.Val.GetId())
+	err := DeleteValDirVal(ctx, c.client.APIClient, valFile.Val.GetId())
 	if err != nil {
 		common.Logger.Errorf("Error deleting val %s: %v", name, err)
 		return syscall.EIO
@@ -123,7 +123,7 @@ func (c *ValsDir) Create(
 	templateCode := GetTemplate(valType)
 	common.Logger.Infof("Creating val %s of type %s with privacy %s", valName, valType, DefaultPrivacy)
 
-	val, err := CreateValDirVal(ctx, c.client, valType, string(templateCode), valName, DefaultPrivacy)
+	val, err := CreateValDirVal(ctx, c.client.APIClient, valType, string(templateCode), valName, DefaultPrivacy)
 	if err != nil {
 		common.Logger.Errorf("API error creating val %s: %v", name, err)
 		return nil, nil, 0, syscall.EIO
@@ -198,7 +198,7 @@ func (c *ValsDir) Rename(
 // Refresh implements the refresh operation for the vals container
 func (c *ValsDir) Refresh(ctx context.Context) error {
 	common.Logger.Info("Starting refresh operation")
-	newVals, err := ListValDirVals(ctx, c.client)
+	newVals, err := ListValDirVals(ctx, c.client.APIClient)
 	if err != nil {
 		common.Logger.Error("Error fetching vals", err)
 		return err
