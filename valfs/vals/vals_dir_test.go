@@ -57,37 +57,69 @@ func TestBasicValCreation(t *testing.T) {
 	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
+	ctx := context.Background()
+
 	t.Run("Create script val", func(t *testing.T) {
 		fileName := randomFilename("create1.S.tsx")
 		filePath := filepath.Join(valsDir, fileName)
 
-		// Create the val
-		err := os.WriteFile(filePath, []byte("console.log('test');"), 0644)
+		// Create empty file first
+		_, err := os.Create(filePath)
 		require.NoError(t, err, "Failed to create file")
+
+		// Get initial val info
+		contents, err := os.ReadFile(filePath)
+		require.NoError(t, err, "Failed to read file")
+		val, err := getValFromFileContents(string(contents), testData.APIClient)
+		require.NoError(t, err, "Failed to get val from file contents")
+		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
+
+		// Update val with code
+		valPackage := vals.NewValPackage(dirVal, false, false)
+		dirVal.SetCode("console.log('test');")
+		valText, err := valPackage.ToText()
+		require.NoError(t, err, "Failed to serialize val package")
+		err = os.WriteFile(filePath, []byte(*valText), 0644)
+		require.NoError(t, err, "Failed to write val")
 		assert.FileExists(t, filePath, "File should exist")
 
-		// Verify metadata and type
-		finalContents, err := os.ReadFile(filePath)
-		require.NoError(t, err, "Failed to read final file")
-		val, err := getValFromFileContents(string(finalContents), testData.APIClient)
-		require.NoError(t, err, "Failed to get val from file contents")
-		assert.Equal(t, "script", val.GetValType(), "Type should be 'script'")
-		assert.Equal(t, int32(0), val.GetVersion(), "Initial version should be 0")
+		// Verify through API
+		err = dirVal.Load(ctx)
+		require.NoError(t, err, "Failed to get val from API")
+		assert.Equal(t, vals.Script, dirVal.GetValType(), "Type should be 'script'")
+		assert.Equal(t, int32(1), dirVal.GetVersion(), "Initial version should be 1 after first write")
+		assert.Equal(t, "console.log('test');", dirVal.GetCode(), "Code should match")
 	})
 
 	t.Run("Create http val", func(t *testing.T) {
 		fileName := randomFilename("create2.H.tsx")
 		filePath := filepath.Join(valsDir, fileName)
 
-		err := os.WriteFile(filePath, []byte("export default function(){return new Response('test')}"), 0644)
-		require.NoError(t, err, "Failed to create http val")
+		// Create empty file first
+		_, err := os.Create(filePath)
+		require.NoError(t, err, "Failed to create file")
+
+		// Get initial val info
+		contents, err := os.ReadFile(filePath)
+		require.NoError(t, err, "Failed to read file")
+		val, err := getValFromFileContents(string(contents), testData.APIClient)
+		require.NoError(t, err, "Failed to get val from file contents")
+		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
+
+		// Update val with code
+		valPackage := vals.NewValPackage(dirVal, false, false)
+		dirVal.SetCode("export default function(){return new Response('test')}")
+		valText, err := valPackage.ToText()
+		require.NoError(t, err, "Failed to serialize val package")
+		err = os.WriteFile(filePath, []byte(*valText), 0644)
+		require.NoError(t, err, "Failed to write val")
 		assert.FileExists(t, filePath, "http val should exist")
 
-		finalContents, err := os.ReadFile(filePath)
-		require.NoError(t, err, "Failed to read final file")
-		val, err := getValFromFileContents(string(finalContents), testData.APIClient)
-		require.NoError(t, err, "Failed to get val from file contents")
-		assert.Equal(t, "http", val.GetValType(), "Type should be 'http'")
+		// Verify through API
+		err = dirVal.Load(ctx)
+		require.NoError(t, err, "Failed to get val from API")
+		assert.Equal(t, vals.HTTP, dirVal.GetValType(), "Type should be 'http'")
+		assert.Equal(t, "export default function(){return new Response('test')}", dirVal.GetCode(), "Code should match")
 	})
 }
 
@@ -195,7 +227,7 @@ func TestValMetadataOperations(t *testing.T) {
 		filePath := filepath.Join(valsDir, fileName)
 
 		// Create initial val
-		err := os.WriteFile(filePath, []byte("console.log('metadata test');"), 0644)
+		_, err := os.Create(filePath)
 		require.NoError(t, err, "Failed to create file")
 
 		contents, err := os.ReadFile(filePath)
@@ -209,10 +241,14 @@ func TestValMetadataOperations(t *testing.T) {
 
 		// Test readme updates
 		newReadme := "Updated readme content"
+		valPackage := vals.NewValPackage(dirVal, false, false)
 		dirVal.SetReadme(newReadme)
-		err = dirVal.Update(ctx)
-		require.NoError(t, err, "Failed to update readme")
+		valText, err := valPackage.ToText()
+		require.NoError(t, err, "Failed to serialize val package")
+		err = os.WriteFile(filePath, []byte(*valText), 0644)
+		require.NoError(t, err, "Failed to write updated val")
 
+		// Verify through API
 		err = dirVal.Load(ctx)
 		require.NoError(t, err, "Failed to get updated val")
 		assert.Equal(t, newReadme, dirVal.GetReadme(), "Readme should be updated")
@@ -226,7 +262,7 @@ func TestValMetadataOperations(t *testing.T) {
 }
 
 func TestValListingAndDeletion(t *testing.T) {
-	testData, _ := setupTest(t)
+	testData, valsDir := setupTest(t)
 	defer testData.Cleanup()
 
 	ctx := context.Background()
@@ -237,25 +273,37 @@ func TestValListingAndDeletion(t *testing.T) {
 		require.NoError(t, err, "Failed to list initial vals")
 		initialCount := len(initialVals)
 
-		// Create new val
-		newVal, err := vals.CreateValDirVal(
-			ctx,
-			testData.APIClient,
-			vals.Script,
-			"console.log('test');",
-			"test_val",
-			"unlisted",
-		)
-		require.NoError(t, err, "Failed to create test val")
+		// Create new val through file
+		fileName := randomFilename("listing.S.tsx")
+		filePath := filepath.Join(valsDir, fileName)
+
+		// Create empty file first
+		_, err = os.Create(filePath)
+		require.NoError(t, err, "Failed to create file")
+
+		// Get val info
+		contents, err := os.ReadFile(filePath)
+		require.NoError(t, err, "Failed to read file")
+		val, err := getValFromFileContents(string(contents), testData.APIClient)
+		require.NoError(t, err, "Failed to get val from file contents")
+		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
+
+		// Write initial code
+		valPackage := vals.NewValPackage(dirVal, false, false)
+		dirVal.SetCode("console.log('test');")
+		valText, err := valPackage.ToText()
+		require.NoError(t, err, "Failed to serialize val package")
+		err = os.WriteFile(filePath, []byte(*valText), 0644)
+		require.NoError(t, err, "Failed to write val")
 
 		// Verify val is in list
 		updatedVals, err := vals.ListValDirVals(ctx, testData.APIClient)
 		require.NoError(t, err, "Failed to list updated vals")
 		assert.Equal(t, initialCount+1, len(updatedVals), "Should have one more val")
 
-		// Delete val
-		err = vals.DeleteValDirVal(ctx, testData.APIClient, newVal.GetId())
-		require.NoError(t, err, "Failed to delete val")
+		// Delete val by removing file
+		err = os.Remove(filePath)
+		require.NoError(t, err, "Failed to delete val file")
 
 		// Verify deletion
 		finalVals, err := vals.ListValDirVals(ctx, testData.APIClient)

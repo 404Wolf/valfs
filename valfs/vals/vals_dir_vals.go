@@ -67,10 +67,23 @@ func DeleteValDirVal(ctx context.Context, apiClient *common.APIClient, valId str
 func (v *ValDirVal) Update(ctx context.Context) error {
 	// If the metadata changed, update the metadata
 	updateReq := valgo.NewValsUpdateRequest()
-	updateReq.SetName(v.name)
-	updateReq.SetType(v.valType)
-	updateReq.SetPrivacy(v.privacy)
-	updateReq.SetReadme(v.readme)
+
+	if v.name != "" {
+		updateReq.SetName(v.name)
+	}
+
+	if v.valType != "" {
+		updateReq.SetType(v.valType)
+	}
+
+	if v.privacy != "" {
+		updateReq.SetPrivacy(v.privacy)
+	}
+
+	if v.readme != "" {
+		updateReq.SetReadme(v.readme)
+	}
+
 	_, err := v.apiClient.APIClient.ValsAPI.ValsUpdate(ctx, v.valId).ValsUpdateRequest(*updateReq).Execute()
 	if err != nil {
 		return err
