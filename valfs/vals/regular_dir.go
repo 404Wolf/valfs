@@ -20,7 +20,6 @@ type RegularValsDir struct {
 	fs.Inode
 
 	client *common.Client
-	config common.RefresherConfig
 }
 
 var _ = (fs.NodeRenamer)((*RegularValsDir)(nil))
@@ -38,10 +37,7 @@ func NewRegularValsDir(
 	ctx context.Context,
 ) VTFileContainer {
 	common.Logger.Info("Initializing new ValsDir")
-	valsDir := &RegularValsDir{
-		client: client,
-		config: common.RefresherConfig{LookupCap: 99},
-	}
+	valsDir := &RegularValsDir{client: client}
 
 	// Add the inode to the parent
 	attrs := fs.StableAttr{Mode: syscall.S_IFDIR | 0555}

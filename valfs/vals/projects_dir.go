@@ -20,7 +20,6 @@ type ProjectsDir struct {
 	fs.Inode
 
 	client   *common.Client
-	config   common.RefresherConfig
 	stopChan chan struct{}
 }
 
@@ -43,7 +42,6 @@ func NewProjectsDir(
 	common.Logger.Infof("Initializing new ProjectsDir")
 	projectDir := &ProjectsDir{
 		client:   client,
-		config:   common.RefresherConfig{LookupCap: 99},
 		stopChan: nil,
 	}
 

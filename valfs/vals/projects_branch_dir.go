@@ -20,7 +20,6 @@ type BranchVTFileContainer struct {
 	Branch *valgo.Branch
 
 	client   *common.Client
-	config   common.RefresherConfig
 	stopChan chan struct{}
 }
 
@@ -45,7 +44,6 @@ func NewBranchesDir(
 	branchDir := &BranchVTFileContainer{
 		Branch:   branch,
 		client:   client,
-		config:   common.RefresherConfig{LookupCap: 99},
 		stopChan: nil,
 	}
 
