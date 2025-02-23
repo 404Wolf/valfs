@@ -213,7 +213,7 @@ func TestValMetadata(t *testing.T) {
 
 		newReadme := "Updated readme content"
 		valPackage := vals.NewValPackage(dirVal, false, false)
-		dirVal.SetReadme(newReadme)
+		dirVal.SetReadme(&newReadme)
 		valText, err := valPackage.ToText()
 		require.NoError(t, err, "Failed to serialize val package")
 		err = os.WriteFile(filePath, []byte(*valText), 0644)
@@ -221,7 +221,7 @@ func TestValMetadata(t *testing.T) {
 
 		err = dirVal.Load(ctx)
 		require.NoError(t, err, "Failed to get updated val")
-		assert.Equal(t, newReadme, dirVal.GetReadme(), "Readme should be updated")
+		assert.Equal(t, newReadme, *dirVal.GetReadme(), "Readme should be updated")
 
 		assert.NotEmpty(t, dirVal.GetModuleLink(), "Module link should exist")
 		assert.NotEmpty(t, dirVal.GetVersionsLink(), "Versions link should exist")

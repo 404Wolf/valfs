@@ -17,26 +17,28 @@ type RegularValVTFile struct {
 	container *VTFileContainer
 	path      string
 
-	// Val-specific attributes
-	authorName     string
-	authorId       string
+	// Val-specific attributes - required fields
 	valId          string
 	name           string
 	valType        string
 	code           string
 	privacy        string
-	readme         string
 	version        int32
-	endpointLink   string
 	moduleLink     string
-	versionsLink   string
 	apiClient      *common.APIClient
 	createdAt      time.Time
-	public         bool
 	url            string
 	likeCount      int32
 	referenceCount int32
-	inode          *fs.Inode
+	public         bool
+
+	// Optional fields
+	authorName   *string
+	authorId     *string
+	readme       *string
+	endpointLink *string
+	versionsLink *string
+	inode        *fs.Inode
 }
 
 // RegularValVTFileOf creates a new ValVTFile instance for an existing val ID.
@@ -120,12 +122,8 @@ func (v *RegularValVTFile) GetModuleUrl() string {
 }
 
 // GetDeployedUrl returns the endpoint URL for this val if it exists.
-// Returns nil if the val doesn't have an endpoint.
 func (v *RegularValVTFile) GetDeployedUrl() *string {
-	if v.endpointLink == "" {
-		return nil
-	}
-	return &v.endpointLink
+	return v.endpointLink
 }
 
 // UpdateFromText parses the provided text representation of a val and updates
@@ -159,8 +157,6 @@ func (v *RegularValVTFile) GetAsPackedText() (*string, error) {
 }
 
 // Save updates the val's information on the Val Town server.
-// It handles both metadata and code updates separately due to API constraints.
-// Save updates the val's information on the Val Town server.
 func (v *RegularValVTFile) Save(ctx context.Context) error {
 	common.Logger.Info("Saving val", "valId", v.valId)
 
@@ -175,8 +171,8 @@ func (v *RegularValVTFile) Save(ctx context.Context) error {
 	if v.privacy != "" {
 		updateReq.SetPrivacy(v.privacy)
 	}
-	if v.readme != "" {
-		updateReq.SetReadme(v.readme)
+	if v.readme != nil {
+		updateReq.SetReadme(*v.readme)
 	}
 
 	common.Logger.Debug("Updating val metadata", "valId", v.valId)
@@ -223,6 +219,7 @@ func (v *RegularValVTFile) Load(ctx context.Context) error {
 
 // setExtendedValProperties updates the val's properties from an ExtendedVal object.
 func (v *RegularValVTFile) setExtendedValProperties(val *valgo.ExtendedVal) {
+	// Required fields
 	v.name = val.Name
 	v.valId = val.Id
 	v.valType = val.Type
@@ -233,29 +230,42 @@ func (v *RegularValVTFile) setExtendedValProperties(val *valgo.ExtendedVal) {
 	v.url = val.Url
 	v.likeCount = val.LikeCount
 	v.referenceCount = val.ReferenceCount
+	v.moduleLink = val.Links.Module
 
+	// Optional fields
 	if val.Code.IsSet() {
 		v.code = val.GetCode()
 	}
 
 	if val.Readme.IsSet() {
-		v.readme = val.GetReadme()
-	}
-
-	links := val.Links
-	if links.Endpoint != nil {
-		v.endpointLink = *links.Endpoint
+		readme := val.GetReadme()
+		v.readme = &readme
 	} else {
-		v.endpointLink = ""
+		v.readme = nil
 	}
 
-	v.moduleLink = links.Module
-	v.versionsLink = links.Versions
+	if val.Links.Endpoint != nil {
+		v.endpointLink = val.Links.Endpoint
+	} else {
+		v.endpointLink = nil
+	}
+
+	if val.Links.Versions != "" {
+		versionsLink := val.Links.Versions
+		v.versionsLink = &versionsLink
+	} else {
+		v.versionsLink = nil
+	}
 
 	if author := val.Author; author.IsSet() {
 		authorData := author.Get()
-		v.authorId = authorData.GetId()
-		v.authorName = authorData.GetUsername()
+		id := authorData.GetId()
+		username := authorData.GetUsername()
+		v.authorId = &id
+		v.authorName = &username
+	} else {
+		v.authorId = nil
+		v.authorName = nil
 	}
 }
 
@@ -305,119 +315,103 @@ func ListValVTFiles(ctx context.Context, apiClient *common.APIClient) ([]*Regula
 		regularValVTFile.SetValType(val.Type)
 		regularValVTFile.SetCode(val.GetCode())
 		regularValVTFile.SetPrivacy(val.Privacy)
-		regularValVTFile.SetReadme("")
+		regularValVTFile.SetReadme(nil)
 		vals = append(vals, regularValVTFile)
 	}
 	common.Logger.Info("Successfully fetched all vals", "count", len(vals))
 	return vals, nil
 }
 
-// GetInode returns the inode of the val
+// Interface implementation methods
+
 func (v *RegularValVTFile) GetInode() *fs.Inode {
 	return v.inode
 }
 
-// GetVersionsLink returns the link to the val's versions
-func (v *RegularValVTFile) GetVersionsLink() string {
+func (v *RegularValVTFile) GetVersionsLink() *string {
 	return v.versionsLink
 }
 
-// GetModuleLink returns the link to the val's module
 func (v *RegularValVTFile) GetModuleLink() string {
 	return v.moduleLink
 }
 
-// GetEndpointLink returns the link to the val's endpoint
-func (v *RegularValVTFile) GetEndpointLink() string {
+func (v *RegularValVTFile) GetEndpointLink() *string {
 	return v.endpointLink
 }
 
-// GetID returns the val ID
+func (v *RegularValVTFile) GetDeployedLink() *string {
+	return v.endpointLink
+}
+
 func (v *RegularValVTFile) GetId() string {
 	return v.valId
 }
 
-// GetName returns the val name
 func (v *RegularValVTFile) GetName() string {
 	return v.name
 }
 
-// GetValType returns the val type
 func (v *RegularValVTFile) GetType() VTFileType {
 	return VTFileType(v.valType)
 }
 
-// GetCode returns the val code
 func (v *RegularValVTFile) GetCode() string {
 	return v.code
 }
 
-// GetPrivacy returns the val privacy setting
 func (v *RegularValVTFile) GetPrivacy() string {
 	return v.privacy
 }
 
-// GetReadme returns the val readme
-func (v *RegularValVTFile) GetReadme() string {
+func (v *RegularValVTFile) GetReadme() *string {
 	return v.readme
 }
 
-// GetVersion returns the val version
 func (v *RegularValVTFile) GetVersion() int32 {
 	return v.version
 }
 
-// GetAuthorName returns the val's author's name
-func (v *RegularValVTFile) GetAuthorName() string {
+func (v *RegularValVTFile) GetAuthorName() *string {
 	return v.authorName
 }
 
-// GetAuthorId returns the val's author's Id
-func (v *RegularValVTFile) GetAuthorId() string {
+func (v *RegularValVTFile) GetAuthorId() *string {
 	return v.authorId
 }
 
-// GetCreatedAt returns the creation time of the val
 func (v *RegularValVTFile) GetCreatedAt() time.Time {
 	return v.createdAt
 }
 
-// GetUrl returns the val's URL
 func (v *RegularValVTFile) GetUrl() string {
 	return v.url
 }
 
-// GetLikeCount returns the number of likes the val has
 func (v *RegularValVTFile) GetLikeCount() int32 {
 	return v.likeCount
 }
 
-// GetReferenceCount returns the number of references to the val
 func (v *RegularValVTFile) GetReferenceCount() int32 {
 	return v.referenceCount
 }
 
-// SetName sets the name of the val
 func (v *RegularValVTFile) SetName(name string) {
 	v.name = name
 }
 
-// SetValType sets the type of the val
 func (v *RegularValVTFile) SetValType(valType string) {
 	v.valType = valType
 }
 
-// SetCode sets the code of the val
 func (v *RegularValVTFile) SetCode(code string) {
 	v.code = code
 }
 
-// SetPrivacy sets the privacy of the val
 func (v *RegularValVTFile) SetPrivacy(privacy string) {
 	v.privacy = privacy
 }
 
-// SetReadme sets the readme of the val
-func (v *RegularValVTFile) SetReadme(readme string) {
+func (v *RegularValVTFile) SetReadme(readme *string) {
 	v.readme = readme
 }

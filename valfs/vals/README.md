@@ -14,10 +14,11 @@ A `valfile` is anything that conforms to `./vtfile.go`' `VTFile` interface.
 
 It is sort of like an ORM. Creation depends on the flavor, but in general you
 can create a new one using methods like
-- `<Regular|Project>VtFileOf`: Create a new *flavored* `VTFile` from an existing val (by,
-    say, providing the ID of the val to the method)
-- `Create<Regular|Project>ValVtFile`: Create a new *flavored* `VTFile` by
-    making a brand new val with the API.
+
+- `<Regular|Project>VtFileOf`: Create a new _flavored_ `VTFile` from an existing
+  val (by, say, providing the ID of the val to the method)
+- `Create<Regular|Project>ValVtFile`: Create a new _flavored_ `VTFile` by making
+  a brand new val with the API.
 
 To mutate, you use the setters, and then call `VTFile.Save(ctx)`. To update the
 state based on the server state, you can call `VTFile.Load(ctx)`.
@@ -26,7 +27,6 @@ state based on the server state, you can call `VTFile.Load(ctx)`.
 
 When constructing the fuse file system, we create
 `<Regular|Project>VTFileInode`s. These take a `VTFile` (of any flavor, as long
-as it conforms to the `VTFile` interface!), and expose the functionality
-through fuse magic. The `<Regular|Project>VTFileInode`s embed a generic
-`VTFileInode` basis.
-
+as it conforms to the `VTFile` interface!), and expose the functionality through
+fuse magic. The `<Regular|Project>VTFileInode`s embed a generic `VTFileInode`
+basis.

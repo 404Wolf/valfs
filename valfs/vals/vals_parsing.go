@@ -33,7 +33,7 @@ type valPackageFrontmatter struct {
 	Version int32                      `yaml:"version" lc:"🔒 (reopen file to see change)"`
 	Privacy string                     `yaml:"privacy" lc:"(public|private|unlisted)"`
 	Links   valPackageFrontmatterLinks `yaml:"links"`
-	ReadMe  string                     `yaml:"readme"`
+	ReadMe  *string                    `yaml:"readme,omitempty"`
 }
 
 // NewValPackage creates a new val package from a val
@@ -126,7 +126,7 @@ func deconstructVal(contents string) (
 
 // getFrontmatterText returns the metadata formatted as YAML with comment markers
 func (v *ValPackage) getFrontmatterText() (string, error) {
-	moduleLink := v.Val.GetModuleUrl() // Updated to use interface method
+	moduleLink := v.Val.GetModuleLink()
 
 	if v.StaticMeta {
 		if strings.Contains(moduleLink, "?") {
@@ -134,16 +134,22 @@ func (v *ValPackage) getFrontmatterText() (string, error) {
 		}
 	}
 
-	deployedUrl := v.Val.GetDeployedUrl() // Updated to use interface method
 	frontmatterValLinks := valPackageFrontmatterLinks{
-		Valtown:  getWebsiteLink(v.Val.GetAuthorName(), v.Val.GetName()),
-		Module:   moduleLink,
-		Endpoint: deployedUrl,
+		Valtown: getWebsiteLink(v.Val.GetAuthorName(), v.Val.GetName()),
+		Module:  moduleLink,
+	}
+
+	// Only include optional fields if they exist
+	if deployedLink := v.Val.GetDeployedLink(); deployedLink != nil {
+		frontmatterValLinks.Endpoint = deployedLink
 	}
 
 	if v.Val.GetType() == VTFileTypeEmail {
-		emailAddress := fmt.Sprintf("%s.%s@valtown.email", v.Val.GetAuthorName(), v.Val.GetName())
-		frontmatterValLinks.Email = &emailAddress
+		authorName := v.Val.GetAuthorName()
+		if authorName != nil {
+			emailAddress := fmt.Sprintf("%s.%s@valtown.email", *authorName, v.Val.GetName())
+			frontmatterValLinks.Email = &emailAddress
+		}
 	}
 
 	frontmatterVal := valPackageFrontmatter{
@@ -163,6 +169,9 @@ func (v *ValPackage) getFrontmatterText() (string, error) {
 }
 
 // getWebsiteLink constructs the val.town website URL for a val
-func getWebsiteLink(authorUsername, valName string) string {
-	return fmt.Sprintf("https://www.val.town/v/%s/%s", authorUsername, valName)
+func getWebsiteLink(authorUsername *string, valName string) string {
+	if authorUsername == nil {
+		return ""
+	}
+	return fmt.Sprintf("https://www.val.town/v/%s/%s", *authorUsername, valName)
 }

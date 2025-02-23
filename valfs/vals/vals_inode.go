@@ -100,6 +100,10 @@ func (fh *ValVTFileHandle) Read(
 		return nil, syscall.EIO
 	}
 
+	if packedText == nil {
+		return fuse.ReadResultData([]byte{}), syscall.F_OK
+	}
+
 	end := off + int64(len(dest))
 	if end > int64(len(*packedText)) {
 		end = int64(len(*packedText))
@@ -156,9 +160,9 @@ func (f *ValVTFileInode) Getattr(
 	common.Logger.Info("Getting attributes for val file", "name", f.vtFile.GetName())
 
 	// Set size if we have the data
-	if f.vtFile.GetAuthorId() != "" {
+	if f.vtFile.GetAuthorId() != nil {
 		packedText, err := f.vtFile.GetAsPackedText()
-		if err != nil {
+		if err == nil && packedText != nil {
 			out.Size = uint64(len(*packedText))
 		}
 	}

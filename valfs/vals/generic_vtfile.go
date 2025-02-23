@@ -53,27 +53,32 @@ type ValVTFile interface {
 	GetAsPackedText() (*string, error)
 	UpdateFromPackedText(context context.Context, text string) error
 
+	// Required/non-nullable fields
 	GetName() string
-	GetCode() string
 	GetPrivacy() string
-	GetReadme() string
 	GetVersion() int32
-	GetAuthorName() string
-	GetAuthorId() string
-	GetCreatedAt() time.Time
 	GetUrl() string
 	GetLikeCount() int32
 	GetReferenceCount() int32
-	GetVersionsLink() string
+	GetCreatedAt() time.Time
+	GetCode() string
 	GetModuleLink() string
-	GetEndpointLink() string
+
+	// Nullable fields
+	GetReadme() *string
+	GetAuthorName() *string
+	GetAuthorId() *string
+	GetVersionsLink() *string
+	GetEndpointLink() *string
+	GetDeployedLink() *string
 	GetInode() *fs.Inode
 
+	// Setters
 	SetName(name string)
 	SetValType(valType string)
 	SetCode(code string)
 	SetPrivacy(privacy string)
-	SetReadme(readme string)
+	SetReadme(readme *string)
 }
 
 const (
