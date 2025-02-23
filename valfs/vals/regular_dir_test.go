@@ -16,18 +16,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const dirName = "vals"
-
 // Helper functions
 func setupTest(t *testing.T) (*valfs.TestData, string) {
-	return valfs.SetupTest(t, dirName)
+	return valfs.SetupTest(t, vals.RegularDirName)
 }
 
 func randomFilename(prefix string) string {
 	return fmt.Sprintf("val%d%s", rand.Intn(999999), prefix)
 }
 
-func getValFromFileContents(contents string, apiClient *common.APIClient) (vals.Val, error) {
+func getValFromFileContents(contents string, apiClient *common.APIClient) (*vals.RegularValVTFile, error) {
 	pattern := `id:\s*([0-9a-f-]+)`
 	re := regexp.MustCompile(pattern)
 	matches := re.FindStringSubmatch(contents)
@@ -37,7 +35,7 @@ func getValFromFileContents(contents string, apiClient *common.APIClient) (vals.
 	}
 	id := matches[1]
 
-	val := vals.ValDirValOf(apiClient, id)
+	val := vals.RegularValVTFileOf(apiClient, id)
 	tempPackage := vals.NewValPackage(val, false, false)
 
 	err := tempPackage.UpdateVal(contents)
@@ -45,7 +43,7 @@ func getValFromFileContents(contents string, apiClient *common.APIClient) (vals.
 		return nil, fmt.Errorf("failed to parse val contents: %w", err)
 	}
 
-	return val, nil
+	return val.(*vals.RegularValVTFile), nil
 }
 
 // TestValCreation tests the creation of different types of vals
@@ -66,7 +64,7 @@ func TestValCreation(t *testing.T) {
 		require.NoError(t, err, "Failed to read file")
 		val, err := getValFromFileContents(string(contents), testData.APIClient)
 		require.NoError(t, err, "Failed to get val from file contents")
-		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
+		dirVal := vals.RegularValVTFileOf(testData.APIClient, val.GetId())
 
 		valPackage := vals.NewValPackage(dirVal, false, false)
 		dirVal.SetCode("console.log('test');")
@@ -78,7 +76,7 @@ func TestValCreation(t *testing.T) {
 
 		err = dirVal.Load(ctx)
 		require.NoError(t, err, "Failed to get val from API")
-		assert.Equal(t, vals.Script, dirVal.GetValType(), "Type should be 'script'")
+		assert.Equal(t, vals.VTFileTypeScript, dirVal.GetType(), "Type should be 'script'")
 		assert.Equal(t, int32(1), dirVal.GetVersion(), "Initial version should be 1 after first write")
 		assert.Equal(t, "console.log('test');", dirVal.GetCode(), "Code should match")
 	})
@@ -94,7 +92,7 @@ func TestValCreation(t *testing.T) {
 		require.NoError(t, err, "Failed to read file")
 		val, err := getValFromFileContents(string(contents), testData.APIClient)
 		require.NoError(t, err, "Failed to get val from file contents")
-		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
+		dirVal := vals.RegularValVTFileOf(testData.APIClient, val.GetId())
 
 		valPackage := vals.NewValPackage(dirVal, false, false)
 		dirVal.SetCode("export default function(){return new Response('test')}")
@@ -106,7 +104,7 @@ func TestValCreation(t *testing.T) {
 
 		err = dirVal.Load(ctx)
 		require.NoError(t, err, "Failed to get val from API")
-		assert.Equal(t, vals.HTTP, dirVal.GetValType(), "Type should be 'http'")
+		assert.Equal(t, vals.VTFileTypeHTTP, dirVal.GetType(), "Type should be 'http'")
 		assert.Equal(t, "export default function(){return new Response('test')}", dirVal.GetCode(), "Code should match")
 	})
 }
@@ -131,7 +129,7 @@ func TestValUpdates(t *testing.T) {
 		require.NoError(t, err, "Failed to get val from file contents")
 
 		privacySettings := []string{"public", "private", "unlisted"}
-		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
+		dirVal := vals.RegularValVTFileOf(testData.APIClient, val.GetId())
 
 		for _, privacy := range privacySettings {
 			err = dirVal.Load(ctx)
@@ -161,7 +159,7 @@ func TestValUpdates(t *testing.T) {
 		require.NoError(t, err, "Failed to read file")
 		val, err := getValFromFileContents(string(contents), testData.APIClient)
 		require.NoError(t, err, "Failed to get val from file contents")
-		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
+		dirVal := vals.RegularValVTFileOf(testData.APIClient, val.GetId())
 
 		updates := []string{
 			"console.log('update 1');",
@@ -206,14 +204,14 @@ func TestValMetadata(t *testing.T) {
 		require.NoError(t, err, "Failed to read file")
 		val, err := getValFromFileContents(string(contents), testData.APIClient)
 		require.NoError(t, err, "Failed to get val from file contents")
-		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
+		dirVal := vals.RegularValVTFileOf(testData.APIClient, val.GetId())
 
 		err = dirVal.Load(ctx)
 		require.NoError(t, err, "Failed to get val")
 
 		newReadme := "Updated readme content"
 		valPackage := vals.NewValPackage(dirVal, false, false)
-		dirVal.SetReadme(newReadme)
+		dirVal.SetReadme(&newReadme)
 		valText, err := valPackage.ToText()
 		require.NoError(t, err, "Failed to serialize val package")
 		err = os.WriteFile(filePath, []byte(*valText), 0644)
@@ -221,7 +219,7 @@ func TestValMetadata(t *testing.T) {
 
 		err = dirVal.Load(ctx)
 		require.NoError(t, err, "Failed to get updated val")
-		assert.Equal(t, newReadme, dirVal.GetReadme(), "Readme should be updated")
+		assert.Equal(t, newReadme, *dirVal.GetReadme(), "Readme should be updated")
 
 		assert.NotEmpty(t, dirVal.GetModuleLink(), "Module link should exist")
 		assert.NotEmpty(t, dirVal.GetVersionsLink(), "Versions link should exist")
@@ -238,7 +236,7 @@ func TestValManagement(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("Val listing and deletion", func(t *testing.T) {
-		initialVals, err := vals.ListValDirVals(ctx, testData.APIClient)
+		initialVals, err := vals.ListValVTFiles(ctx, testData.APIClient)
 		require.NoError(t, err, "Failed to list initial vals")
 		initialCount := len(initialVals)
 
@@ -252,7 +250,7 @@ func TestValManagement(t *testing.T) {
 		require.NoError(t, err, "Failed to read file")
 		val, err := getValFromFileContents(string(contents), testData.APIClient)
 		require.NoError(t, err, "Failed to get val from file contents")
-		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
+		dirVal := vals.RegularValVTFileOf(testData.APIClient, val.GetId())
 
 		valPackage := vals.NewValPackage(dirVal, false, false)
 		dirVal.SetCode("console.log('test');")
@@ -261,14 +259,14 @@ func TestValManagement(t *testing.T) {
 		err = os.WriteFile(filePath, []byte(*valText), 0644)
 		require.NoError(t, err, "Failed to write val")
 
-		updatedVals, err := vals.ListValDirVals(ctx, testData.APIClient)
+		updatedVals, err := vals.ListValVTFiles(ctx, testData.APIClient)
 		require.NoError(t, err, "Failed to list updated vals")
 		assert.Equal(t, initialCount+1, len(updatedVals), "Should have one more val")
 
 		err = os.Remove(filePath)
 		require.NoError(t, err, "Failed to delete val file")
 
-		finalVals, err := vals.ListValDirVals(ctx, testData.APIClient)
+		finalVals, err := vals.ListValVTFiles(ctx, testData.APIClient)
 		require.NoError(t, err, "Failed to list final vals")
 		assert.Equal(t, initialCount, len(finalVals), "Should be back to initial count")
 	})
@@ -315,7 +313,7 @@ func TestValTypeChange(t *testing.T) {
 		require.NoError(t, err, "Failed to read file")
 		val, err := getValFromFileContents(string(contents), testData.APIClient)
 		require.NoError(t, err, "Failed to get val from file contents")
-		dirVal := vals.ValDirValOf(testData.APIClient, val.GetId())
+		dirVal := vals.RegularValVTFileOf(testData.APIClient, val.GetId())
 
 		// Set initial code
 		testCode := "export default function handler(req) { return new Response('Hello!'); }"
@@ -336,7 +334,7 @@ func TestValTypeChange(t *testing.T) {
 		// Verify code persisted after type change
 		err = dirVal.Load(ctx)
 		require.NoError(t, err, "Failed to load val after type change")
-		assert.Equal(t, vals.HTTP, dirVal.GetValType(), "Type should be changed to HTTP")
+		assert.Equal(t, vals.VTFileTypeHTTP, dirVal.GetType(), "Type should be changed to HTTP")
 		assert.Equal(t, testCode, dirVal.GetCode(), "Code should remain unchanged after type change")
 
 		// Read the file contents and verify deployment URL exists
@@ -359,7 +357,7 @@ func TestValTypeChange(t *testing.T) {
 		// Verify code still persists
 		err = dirVal.Load(ctx)
 		require.NoError(t, err, "Failed to load val after changing back to script")
-		assert.Equal(t, vals.Script, dirVal.GetValType(), "Type should be changed to Script")
+		assert.Equal(t, vals.VTFileTypeScript, dirVal.GetType(), "Type should be changed to Script")
 		assert.Equal(t, testCode, dirVal.GetCode(), "Code should remain unchanged after changing back to script")
 	})
 }

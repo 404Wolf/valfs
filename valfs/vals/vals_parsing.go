@@ -13,7 +13,7 @@ import (
 
 // ValPackage represents a complete val package with metadata and configuration
 type ValPackage struct {
-	Val Val
+	Val ValVTFile // Changed to interface type
 
 	StaticMeta     bool
 	ExecutableVals bool
@@ -33,11 +33,11 @@ type valPackageFrontmatter struct {
 	Version int32                      `yaml:"version" lc:"🔒 (reopen file to see change)"`
 	Privacy string                     `yaml:"privacy" lc:"(public|private|unlisted)"`
 	Links   valPackageFrontmatterLinks `yaml:"links"`
-	ReadMe  string                     `yaml:"readme"`
+	ReadMe  *string                    `yaml:"readme,omitempty"`
 }
 
 // NewValPackage creates a new val package from a val
-func NewValPackage(val Val, staticMeta bool, executableVals bool) ValPackage {
+func NewValPackage(val ValVTFile, staticMeta bool, executableVals bool) ValPackage {
 	return ValPackage{
 		Val:            val,
 		StaticMeta:     staticMeta,
@@ -134,16 +134,22 @@ func (v *ValPackage) getFrontmatterText() (string, error) {
 		}
 	}
 
-	endpointLink := v.Val.GetEndpointLink()
 	frontmatterValLinks := valPackageFrontmatterLinks{
-		Valtown:  getWebsiteLink(v.Val.GetAuthorName(), v.Val.GetName()),
-		Module:   moduleLink,
-		Endpoint: getEndpointLinkPtr(endpointLink),
+		Valtown: getWebsiteLink(v.Val.GetAuthorName(), v.Val.GetName()),
+		Module:  moduleLink,
 	}
 
-	if v.Val.GetValType() == "email" {
-		emailAddress := fmt.Sprintf("%s.%s@valtown.email", v.Val.GetAuthorName(), v.Val.GetName())
-		frontmatterValLinks.Email = &emailAddress
+	// Only include optional fields if they exist
+	if deployedLink := v.Val.GetDeployedLink(); deployedLink != nil {
+		frontmatterValLinks.Endpoint = deployedLink
+	}
+
+	if v.Val.GetType() == VTFileTypeEmail {
+		authorName := v.Val.GetAuthorName()
+		if authorName != nil {
+			emailAddress := fmt.Sprintf("%s.%s@valtown.email", *authorName, v.Val.GetName())
+			frontmatterValLinks.Email = &emailAddress
+		}
 	}
 
 	frontmatterVal := valPackageFrontmatter{
@@ -163,14 +169,9 @@ func (v *ValPackage) getFrontmatterText() (string, error) {
 }
 
 // getWebsiteLink constructs the val.town website URL for a val
-func getWebsiteLink(authorUsername, valName string) string {
-	return fmt.Sprintf("https://www.val.town/v/%s/%s", authorUsername, valName)
-}
-
-// getEndpointLinkPtr converts empty endpoint links to nil, otherwise returns pointer
-func getEndpointLinkPtr(endpointLink string) *string {
-	if endpointLink == "" {
-		return nil
+func getWebsiteLink(authorUsername *string, valName string) string {
+	if authorUsername == nil {
+		return ""
 	}
-	return &endpointLink
+	return fmt.Sprintf("https://www.val.town/v/%s/%s", *authorUsername, valName)
 }

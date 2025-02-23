@@ -9,7 +9,7 @@ run: build
 	./build
 
 test: build
-	go test -v ./...
+	go test -v ./... -p 1
 
 clean:
 	rm -f build
