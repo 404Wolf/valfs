@@ -11,40 +11,46 @@ import (
 	"github.com/hanwen/go-fuse/v2/fuse"
 
 	common "github.com/404wolf/valfs/common"
+	"github.com/404wolf/valgo"
 )
 
 // The folder for a specific branch of a project
-type BranchDir struct {
+type BranchVTFileContainer struct {
 	fs.Inode
+	Branch *valgo.Branch
 
 	client   *common.Client
 	config   common.RefresherConfig
 	stopChan chan struct{}
 }
 
-var _ = (fs.NodeRenamer)((*BranchDir)(nil))
-var _ = (fs.NodeCreater)((*BranchDir)(nil))
-var _ = (fs.NodeUnlinker)((*BranchDir)(nil))
-var _ = (ValsContainer)((*BranchDir)(nil))
+const BranchDirPerms = syscall.S_IFDIR | 0755
 
-var previousBranchIds = make(map[string]*ValFile)
+var _ = (fs.NodeRenamer)((*BranchVTFileContainer)(nil))
+var _ = (fs.NodeCreater)((*BranchVTFileContainer)(nil))
+var _ = (fs.NodeUnlinker)((*BranchVTFileContainer)(nil))
+var _ = (VTFileContainer)((*BranchVTFileContainer)(nil))
+
+var previousBranchIds = make(map[string]*RegularValVTFile)
 
 // A branch of a val town project, as a folder. All vals, files, and folders in
 // the branch are subdirectories and the branch is the root.
 func NewBranchesDir(
 	parent *fs.Inode,
 	client *common.Client,
+	branch *valgo.Branch,
 	ctx context.Context,
-) ValsContainer {
+) VTFileContainer {
 	common.Logger.Info("Initializing new BranchesDir")
-	branchDir := &BranchDir{
+	branchDir := &BranchVTFileContainer{
+		Branch:   branch,
 		client:   client,
 		config:   common.RefresherConfig{LookupCap: 99},
 		stopChan: nil,
 	}
 
 	// Add the inode to the parent
-	attrs := fs.StableAttr{Mode: syscall.S_IFDIR | 0555}
+	attrs := fs.StableAttr{Mode: BranchDirPerms}
 	parent.NewPersistentInode(ctx, branchDir, attrs)
 
 	// Initial refresh
@@ -63,14 +69,14 @@ func NewBranchesDir(
 	return branchDir
 }
 
-func (c *BranchDir) StartAutoRefresh(ctx context.Context, interval time.Duration) {
+func (c *BranchVTFileContainer) StartAutoRefresh(ctx context.Context, interval time.Duration) {
 	common.Logger.Info("BranchDir auto-refresh start stub")
 }
-func (c *BranchDir) Refresh(ctx context.Context) error {
+func (c *BranchVTFileContainer) Refresh(ctx context.Context) error {
 	common.Logger.Info("BranchDir refresh stub")
 	return nil
 }
-func (c *BranchDir) Rename(
+func (c *BranchVTFileContainer) Rename(
 	ctx context.Context,
 	name string,
 	newParent fs.InodeEmbedder,
@@ -79,7 +85,7 @@ func (c *BranchDir) Rename(
 ) syscall.Errno {
 	return syscall.ENOSYS
 }
-func (c *BranchDir) Create(
+func (c *BranchVTFileContainer) Create(
 	ctx context.Context,
 	name string,
 	flags uint32,
@@ -88,8 +94,10 @@ func (c *BranchDir) Create(
 ) (node *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
 	return nil, nil, 0, syscall.ENOSYS
 }
-func (c *BranchDir) Unlink(ctx context.Context, name string) syscall.Errno { return syscall.ENOSYS }
-func (c *BranchDir) GetClient() *common.Client                             { return c.client }
-func (c *BranchDir) SupportsDirs() bool                                    { return false }
-func (c *BranchDir) GetInode() *fs.Inode                                   { return &c.Inode }
-func (c *BranchDir) StopAutoRefresh()                                      {}
+func (c *BranchVTFileContainer) Unlink(ctx context.Context, name string) syscall.Errno {
+	return syscall.ENOSYS
+}
+func (c *BranchVTFileContainer) GetClient() *common.Client { return c.client }
+func (c *BranchVTFileContainer) SupportsSubDirs() bool     { return true }
+func (c *BranchVTFileContainer) GetInode() *fs.Inode       { return &c.Inode }
+func (c *BranchVTFileContainer) StopAutoRefresh()          {}

@@ -13,7 +13,7 @@ import (
 
 // ValPackage represents a complete val package with metadata and configuration
 type ValPackage struct {
-	Val Val
+	Val ValVTFile // Changed to interface type
 
 	StaticMeta     bool
 	ExecutableVals bool
@@ -37,7 +37,7 @@ type valPackageFrontmatter struct {
 }
 
 // NewValPackage creates a new val package from a val
-func NewValPackage(val Val, staticMeta bool, executableVals bool) ValPackage {
+func NewValPackage(val ValVTFile, staticMeta bool, executableVals bool) ValPackage {
 	return ValPackage{
 		Val:            val,
 		StaticMeta:     staticMeta,
@@ -126,7 +126,7 @@ func deconstructVal(contents string) (
 
 // getFrontmatterText returns the metadata formatted as YAML with comment markers
 func (v *ValPackage) getFrontmatterText() (string, error) {
-	moduleLink := v.Val.GetModuleLink()
+	moduleLink := v.Val.GetModuleUrl() // Updated to use interface method
 
 	if v.StaticMeta {
 		if strings.Contains(moduleLink, "?") {
@@ -134,14 +134,14 @@ func (v *ValPackage) getFrontmatterText() (string, error) {
 		}
 	}
 
-	endpointLink := v.Val.GetEndpointLink()
+	deployedUrl := v.Val.GetDeployedUrl() // Updated to use interface method
 	frontmatterValLinks := valPackageFrontmatterLinks{
 		Valtown:  getWebsiteLink(v.Val.GetAuthorName(), v.Val.GetName()),
 		Module:   moduleLink,
-		Endpoint: getEndpointLinkPtr(endpointLink),
+		Endpoint: deployedUrl,
 	}
 
-	if v.Val.GetValType() == "email" {
+	if v.Val.GetType() == VTFileTypeEmail {
 		emailAddress := fmt.Sprintf("%s.%s@valtown.email", v.Val.GetAuthorName(), v.Val.GetName())
 		frontmatterValLinks.Email = &emailAddress
 	}
@@ -165,12 +165,4 @@ func (v *ValPackage) getFrontmatterText() (string, error) {
 // getWebsiteLink constructs the val.town website URL for a val
 func getWebsiteLink(authorUsername, valName string) string {
 	return fmt.Sprintf("https://www.val.town/v/%s/%s", authorUsername, valName)
-}
-
-// getEndpointLinkPtr converts empty endpoint links to nil, otherwise returns pointer
-func getEndpointLinkPtr(endpointLink string) *string {
-	if endpointLink == "" {
-		return nil
-	}
-	return &endpointLink
 }

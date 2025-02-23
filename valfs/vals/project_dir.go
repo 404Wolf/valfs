@@ -13,7 +13,7 @@ import (
 	common "github.com/404wolf/valfs/common"
 )
 
-// The folder for a specific project
+// The top level folder for all val town projects
 type ProjectsDir struct {
 	fs.Inode
 
@@ -22,12 +22,14 @@ type ProjectsDir struct {
 	stopChan chan struct{}
 }
 
+const ProjectsDirPerms = syscall.S_IFDIR | 0555
+
 var _ = (fs.NodeRenamer)((*ProjectsDir)(nil))
 var _ = (fs.NodeCreater)((*ProjectsDir)(nil))
 var _ = (fs.NodeUnlinker)((*ProjectsDir)(nil))
-var _ = (ValsContainer)((*ProjectsDir)(nil))
+var _ = (VTFileContainer)((*BranchVTFileContainer)(nil))
 
-var previousProjectIds = make(map[string]*ValFile)
+var previousProjectIds = make(map[string]*ProjectVTFile)
 
 // A val town project as a folder. All vals, files, and folders in
 // the project are subdirectories and the project is the root.
@@ -35,8 +37,8 @@ func NewProjectsDir(
 	parent *fs.Inode,
 	client *common.Client,
 	ctx context.Context,
-) ValsContainer {
-	common.Logger.Info("Initializing new ProjectsDir")
+) VTFileContainer {
+	common.Logger.Infof("Initializing new ProjectsDir")
 	projectDir := &ProjectsDir{
 		client:   client,
 		config:   common.RefresherConfig{LookupCap: 99},
@@ -44,7 +46,7 @@ func NewProjectsDir(
 	}
 
 	// Add the inode to the parent
-	attrs := fs.StableAttr{Mode: syscall.S_IFDIR | 0555}
+	attrs := fs.StableAttr{Mode: ProjectsDirPerms}
 	parent.NewPersistentInode(ctx, projectDir, attrs)
 
 	// Initial refresh
@@ -64,12 +66,11 @@ func NewProjectsDir(
 }
 
 func (c *ProjectsDir) StartAutoRefresh(ctx context.Context, interval time.Duration) {
-	common.Logger.Info("ProjectDir auto-refresh start stub")
+	StartAutoRefreshHelper(ctx, interval, c.Refresh)
 }
-func (c *ProjectsDir) Refresh(ctx context.Context) error {
-	common.Logger.Info("ProjectDir refresh stub")
-	return nil
-}
+
+func (c *ProjectsDir) Refresh(ctx context.Context) error { return nil }
+
 func (c *ProjectsDir) Rename(
 	ctx context.Context,
 	name string,
@@ -79,6 +80,7 @@ func (c *ProjectsDir) Rename(
 ) syscall.Errno {
 	return syscall.ENOSYS
 }
+
 func (c *ProjectsDir) Create(
 	ctx context.Context,
 	name string,
@@ -88,8 +90,8 @@ func (c *ProjectsDir) Create(
 ) (node *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
 	return nil, nil, 0, syscall.ENOSYS
 }
+
 func (c *ProjectsDir) Unlink(ctx context.Context, name string) syscall.Errno { return syscall.ENOSYS }
 func (c *ProjectsDir) GetClient() *common.Client                             { return c.client }
-func (c *ProjectsDir) SupportsDirs() bool                                    { return false }
+func (c *ProjectsDir) SupportsSubDirs() bool                                 { return false }
 func (c *ProjectsDir) GetInode() *fs.Inode                                   { return &c.Inode }
-func (c *ProjectsDir) StopAutoRefresh()                                      {}

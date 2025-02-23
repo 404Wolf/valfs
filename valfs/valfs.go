@@ -33,7 +33,7 @@ func NewValFS(client *common.Client) *ValFS {
 // placed in this folder.
 func (c *ValFS) AddValsDir(ctx context.Context) {
 	common.Logger.Info("Adding vals directory to valfs")
-	valsDir := vals.NewValsDir(&c.Inode, c.client, ctx)
+	valsDir := vals.NewRegularValsDir(&c.Inode, c.client, ctx)
 	c.AddChild("vals", valsDir.GetInode(), true)
 }
 
