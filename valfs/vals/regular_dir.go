@@ -13,6 +13,8 @@ import (
 	common "github.com/404wolf/valfs/common"
 )
 
+const RegularDirName = "vals"
+
 // RegularValsDir is the folder where all regular val town vals are located
 type RegularValsDir struct {
 	fs.Inode

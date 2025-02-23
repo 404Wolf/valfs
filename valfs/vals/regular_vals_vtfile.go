@@ -13,11 +13,11 @@ import (
 // It implements both the VTFile and ValVTFile interfaces, providing methods for
 // reading, writing, and managing val attributes.
 type RegularValVTFile struct {
-	// Basic file system attributes
+	inode *fs.Inode
+
 	container *VTFileContainer
 	path      string
 
-	// Val-specific attributes - required fields
 	valId          string
 	name           string
 	valType        string
@@ -32,13 +32,11 @@ type RegularValVTFile struct {
 	referenceCount int32
 	public         bool
 
-	// Optional fields
 	authorName   *string
 	authorId     *string
 	readme       *string
 	endpointLink *string
 	versionsLink *string
-	inode        *fs.Inode
 }
 
 // RegularValVTFileOf creates a new ValVTFile instance for an existing val ID.

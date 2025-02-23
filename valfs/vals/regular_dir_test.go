@@ -16,11 +16,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const dirName = "vals"
-
 // Helper functions
 func setupTest(t *testing.T) (*valfs.TestData, string) {
-	return valfs.SetupTest(t, dirName)
+	return valfs.SetupTest(t, vals.RegularDirName)
 }
 
 func randomFilename(prefix string) string {

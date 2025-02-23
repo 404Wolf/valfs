@@ -13,6 +13,8 @@ import (
 	common "github.com/404wolf/valfs/common"
 )
 
+const ProjectsDirName = "projects"
+
 // The top level folder for all val town projects
 type ProjectsDir struct {
 	fs.Inode
