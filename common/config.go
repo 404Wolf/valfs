@@ -11,7 +11,10 @@ type ValfsConfig struct {
 	DenoCache bool
 
 	// Add a deno.json for editing with a deno supported IDE/LSP (e.g. denols)
-	DenoJson bool
+	IncludeDenoJson bool
+
+	// Add a .cursorrules to help guide cursor IDE LLMs on how to edit files
+	IncludeCursorRules bool
 
 	// Automatically refresh content using the api with polling
 	AutoRefresh bool

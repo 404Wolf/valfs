@@ -73,7 +73,8 @@ var mountCmd = &cobra.Command{
 
 func ValfsInit() {
 	mountCmd.Flags().BoolVar(&valfsConfig.DenoCache, "deno-cache", true, "automatically cache required deno packages")
-	mountCmd.Flags().BoolVar(&valfsConfig.DenoJson, "deno-json", true, "add a deno.json for editing")
+	mountCmd.Flags().BoolVar(&valfsConfig.IncludeDenoJson, "include-deno-json", true, "add a deno.json for editing")
+	mountCmd.Flags().BoolVar(&valfsConfig.IncludeCursorRules, "include-cursor-rules", true, "add .cursorrules for editor")
 	mountCmd.Flags().BoolVar(&valfsConfig.AutoRefresh, "auto-refresh", true, "automatically refresh content using the api with polling")
 	mountCmd.Flags().BoolVar(&valfsConfig.AutoUnmountOnExit, "auto-unmount", true, "automatically unmount directory on exit")
 	mountCmd.Flags().IntVar(&valfsConfig.AutoRefreshInterval, "refresh-interval", 5, "how often to poll val town website for changes (in seconds)")
