@@ -176,4 +176,6 @@ ENVIRONMENT
 
 You are editing and creating val town Vals as if they are files using a fuse file system for val town. You can create a new val by creating a file `filename.{S|H|C|E}.tsx`, where {S|H|C|E} is the type of val (S for script, H for http, C for cron, E for email)
 
-Val files have sometimes have frontmatter. You should NEVER edit a line in the frontmatter if there is a 🔒 on the line.
+NEVER EVER edit the frontmatter metadata that may show up at the top of val files.
+
+You can import vals by using the esm.town URL with a regular javascript import. Each val file is an esm module. When you create a file it will automatically exist with a esm.town link at the top that you can use to use the val file as an esm module.
