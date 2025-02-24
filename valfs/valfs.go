@@ -35,12 +35,22 @@ func (c *ValFS) AddValsDir(ctx context.Context) {
 	c.AddChild("vals", valsDir.GetInode(), true)
 }
 
-// Add the deno.json file which provides the user context about how to run and
+// Add the editor configuration files which provide the user context about how to run and
 // edit their vals
-func (c *ValFS) AddDenoJSON(ctx context.Context) {
-	common.Logger.Info("Adding deno.json to valfs")
-	denoJsonInode := editor.NewDenoJson(&c.Inode, c.client, ctx)
-	c.AddChild("deno.json", denoJsonInode, false)
+func (c *ValFS) AddEditorFiles(ctx context.Context) {
+	common.Logger.Info("Adding editor configuration files to valfs")
+	config := editor.EditorFilesConfig{
+		IncludeCursorRules: c.client.Config.IncludeCursorRules,
+		IncludeDenoJSON:    c.client.Config.IncludeDenoJson,
+	}
+	editorFiles := editor.NewEditorFiles(&c.Inode, c.client, ctx, config)
+
+	if editorFiles.DenoJSON != nil {
+		c.AddChild("deno.json", editorFiles.DenoJSON, false)
+	}
+	if editorFiles.CursorRules != nil {
+		c.AddChild(".cursorrules", editorFiles.CursorRules, false)
+	}
 }
 
 // Mount the filesystem
@@ -58,10 +68,8 @@ func (c *ValFS) Mount(doneSettingUp func()) error {
 				c.AddValsDir(ctx)
 			}
 
-			// Add the deno.json file
-			if c.client.Config.DenoJson {
-				c.AddDenoJSON(ctx)
-			}
+			// Add static editor files
+			c.AddEditorFiles(ctx)
 
 			doneSettingUp() // Callback
 		},

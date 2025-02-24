@@ -29,7 +29,7 @@ func LoadConfig() *common.ValfsConfig {
 		APIKey:               viper.GetString("apiKey"),
 		MountPoint:           viper.GetString("root"),
 		DenoCache:            viper.GetBool("denoCache"),
-		DenoJson:             viper.GetBool("denoJson"),
+		IncludeDenoJson:             viper.GetBool("denoJson"),
 		AutoRefresh:          viper.GetBool("autoRefresh"),
 		AutoUnmountOnExit:    viper.GetBool("autoUnmountOnExit"),
 		AutoRefreshInterval:  viper.GetInt("autoRefreshInterval"),
